@@ -2,98 +2,94 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <title>Otonom Afet Komuta Merkezi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Afet Rota Sistemi — Otonom Komuta Merkezi</title>
+    <meta name="description" content="Uydu görüntüsünden yapay zeka ile enkaz tespiti ve güvenli rota hesaplama sistemi">
+    
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; overflow: hidden; background: #000; }
-        #map { height: 100vh; width: 100vw; }
-        .ui-panel {
-            position: absolute; top: 20px; left: 20px; z-index: 1000;
-            background: rgba(15, 23, 42, 0.95); color: white; padding: 25px;
-            border-radius: 15px; width: 300px; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
-            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
-        }
-        button {
-            width: 100%; background: #3182ce; color: white; border: none;
-            padding: 15px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px;
-        }
-        .status { margin-top: 15px; padding: 12px; border-radius: 6px; background: rgba(0,0,0,0.4); font-size: 13px; border-left: 4px solid #3182ce; }
-    </style>
+    
+    <!-- App CSS -->
+    <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-<div class="ui-panel">
-    <h2>🚀 Otonom Rota</h2>
-    <p style="font-size: 11px;">1. A ve B seç. 2. Yakınlaş. 3. Ateşle!</p>
-    <button id="analizBtn" onclick="otonomAnalizEt()">YAPAY ZEKAYI ATEŞLE</button>
-    <div id="statusBox" class="status">Sistem hazır.</div>
+<!-- Kontrol Paneli -->
+<div class="control-panel">
+    <div class="panel-header">
+        <h1>🛰️ Afet Rota Sistemi</h1>
+        <p>Haritada A (başlangıç) ve B (hedef) noktalarını seç, yakınlaş ve analizi başlat.</p>
+    </div>
+    
+    <div class="panel-body">
+        <div class="btn-group">
+            <button id="analizBtn" class="btn btn-primary">🧠 ANALİZ BAŞLAT</button>
+            <button id="resetBtn" class="btn btn-secondary">↺ Sıfırla</button>
+        </div>
+
+        <!-- Durum Kutusu -->
+        <div id="statusBox" class="status-box">Sistem hazır. Haritada A ve B noktalarını seç.</div>
+
+        <!-- İlerleme Adımları -->
+        <ul id="progressSteps" class="progress-steps">
+            <li id="stepCapture" class="progress-step">
+                <span class="step-icon">📸</span> Ekran yakalama
+            </li>
+            <li id="stepAI" class="progress-step">
+                <span class="step-icon">🧠</span> AI enkaz analizi
+            </li>
+            <li id="stepRoute" class="progress-step">
+                <span class="step-icon">🗺️</span> Rota hesaplama
+            </li>
+            <li id="stepDone" class="progress-step">
+                <span class="step-icon">✅</span> Tamamlandı
+            </li>
+        </ul>
+
+        <!-- İstatistikler -->
+        <div id="statsGrid" class="stats-grid">
+            <div class="stat-card danger">
+                <div class="stat-value" id="statEnkaz">0</div>
+                <div class="stat-label">Enkaz</div>
+            </div>
+            <div class="stat-card safe">
+                <div class="stat-value" id="statRota">0</div>
+                <div class="stat-label">Rota Noktası</div>
+            </div>
+        </div>
+    </div>
 </div>
 
+<!-- Lejant -->
+<div id="legendPanel" class="legend-panel">
+    <h3>Harita Lejantı</h3>
+    <div class="legend-item">
+        <div class="legend-color" style="background: #f97316;"></div>
+        <span>Güvenli Rota</span>
+    </div>
+    <div class="legend-item">
+        <div class="legend-color" style="background: #fbbf24; opacity: 0.5;"></div>
+        <span>Alternatif Rota</span>
+    </div>
+    <div class="legend-item">
+        <div class="legend-circle" style="background: rgba(239,68,68,0.2); border-color: #ef4444;"></div>
+        <span>Tehlike Bölgesi</span>
+    </div>
+    <div class="legend-item">
+        <div class="legend-circle" style="background: #f87171; border-color: #dc2626; width:10px; height:10px;"></div>
+        <span>Enkaz Noktası</span>
+    </div>
+</div>
+
+<!-- Harita -->
 <div id="map"></div>
 
+<!-- JS Kütüphaneleri -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-<script>
-    const map = L.map('map', { preferCanvas: true, maxZoom: 22 }).setView([36.9165, 34.8951], 17);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Maxar', maxZoom: 22, maxNativeZoom: 18
-    }).addTo(map);
+<!-- App JS -->
+<script src="app.js"></script>
 
-    let markers = { A: null, B: null }, routeLayer = null, enkazLayers = [];
-
-    map.on('click', (e) => {
-        if (!markers.A) { markers.A = L.marker(e.latlng, {draggable: true}).addTo(map).bindPopup("A").openPopup(); }
-        else if (!markers.B) { markers.B = L.marker(e.latlng, {draggable: true}).addTo(map).bindPopup("B").openPopup(); }
-    });
-
-    async function otonomAnalizEt() {
-        if (!markers.A || !markers.B) return alert("A ve B noktalarını seç moruk!");
-        const status = document.getElementById('statusBox');
-        status.innerText = "📸 Analiz yapılıyor...";
-
-        const bounds = map.getBounds();
-        const nw = bounds.getNorthWest();
-        const se = bounds.getSouthEast();
-
-        const canvas = await html2canvas(document.getElementById('map'), { useCORS: true, scale: 1 });
-        
-        canvas.toBlob(async (blob) => {
-            const formData = new FormData();
-            formData.append('uydu_fotosu', blob, 'viewport.png');
-            formData.append('nw_lat', nw.lat); formData.append('nw_lon', nw.lng);
-            formData.append('se_lat', se.lat); formData.append('se_lon', se.lng);
-            formData.append('baslangic_lat', markers.A.getLatLng().lat);
-            formData.append('baslangic_lon', markers.A.getLatLng().lng);
-            formData.append('hedef_lat', markers.B.getLatLng().lat);
-            formData.append('hedef_lon', markers.B.getLatLng().lng);
-
-            try {
-                const response = await fetch('http://127.0.0.1:8000/api/otonom-analiz', { method: 'POST', body: formData });
-                const res = await response.json();
-                if (res.durum === "basarili") {
-                    status.innerHTML = `✅ Analiz bitti.<br>🚙 Rota hazır!`;
-                    cizSonuc(res);
-                } else { status.innerText = "❌ Hata: " + res.mesaj; }
-            } catch (e) { status.innerText = "❌ Sunucu hatası!"; }
-        }, 'image/png');
-    }
-
-    function cizSonuc(res) {
-        if (routeLayer) map.removeLayer(routeLayer);
-        enkazLayers.forEach(l => map.removeLayer(l));
-        enkazLayers = [];
-
-        res.enkazlar.forEach(coord => {
-            const circle = L.circle(coord, { color: 'red', radius: 8, fillOpacity: 0.5 }).addTo(map);
-            enkazLayers.push(circle);
-        });
-
-        if (res.guvenli_rota && res.guvenli_rota.length > 1) {
-            // Fosforlu kalın turuncu şerit
-            routeLayer = L.polyline(res.guvenli_rota, { color: '#ff7800', weight: 10, opacity: 1.0 }).addTo(map);
-        }
-    }
-</script>
 </body>
 </html>

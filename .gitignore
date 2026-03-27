@@ -6,5 +6,7 @@ venv/
 .DS_Store
 *.pt
 cache/
+map_cache/
 *.png
 *.webp
+viewport_*.png
