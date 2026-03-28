@@ -418,16 +418,16 @@ async function submitDebrisReport(e) {
     try {
         // Firebase'e kaydet
         if (db) {
-            // 'add' promisesini bekle, ama eger 5sn'den uzun surerse 'timeout_fallback' don
+            // 'add' promisesini bekle, ama eger 15sn'den uzun surerse 'timeout_fallback' don
             const firestorePromise = db.collection('enkaz_bildirimleri').add(reportData);
-            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout_fallback'), 5000));
+            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('timeout_fallback'), 15000));
             
             try {
                 const result = await Promise.race([firestorePromise, timeoutPromise]);
                 if (result === 'timeout_fallback') {
-                    console.warn('Firebase yanit vermedi. Bildiri yerel olarak kaydediliyor...');
+                    console.warn('Firebase 15 saniye icinde yanit vermedi. Bildiri yerel olarak kaydediliyor...');
                     saveDebrisLocalFallback(reportData);
-                    showDebrisMessage('Sunucu yanit vermedi. Bildiri yerel olarak kaydedildi.', 'success');
+                    showDebrisMessage('Sunucu yanit vermedi (Zaman asimi). Bildiri yerel olarak kaydedildi.', 'success');
                 } else {
                     showDebrisMessage('Enkaz bildirimi basariyla kaydedildi!', 'success');
                 }
@@ -435,7 +435,7 @@ async function submitDebrisReport(e) {
                 // Eger yetki hatasi (Missing permissions) veya offline hatasi verirse buraya duser
                 console.warn('Firebase kayit hatasi: ', err.message);
                 saveDebrisLocalFallback(reportData);
-                showDebrisMessage('Ag/Yetki hatasi. Bildiri yerel olarak kaydedildi.', 'success');
+                showDebrisMessage('Firebase Hatasi: ' + err.message + ' (Yerel olarak kaydedildi)', 'success');
             }
         } else {
             // Firebase yoksa localStorage'a kaydet (fallback)
