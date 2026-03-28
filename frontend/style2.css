@@ -1598,3 +1598,63 @@ select.form-input {
     color: #94a3b8;
     font-size: 12px;
 }
+
+/* ============================================
+   DEBRIS SELECTION MARKER
+   ============================================ */
+.debris-select-marker {
+    background: transparent;
+    border: none;
+}
+.debris-select-marker-inner {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(239, 68, 68, 0.9);
+    border: 3px solid white;
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 22px;
+    font-weight: 800;
+    font-family: inherit;
+    animation: pulseDebris 1.5s infinite;
+}
+.debris-select-marker-close {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 22px;
+    height: 22px;
+    background: #1e293b;
+    color: white;
+    border-radius: 50%;
+    border: 2px solid white;
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    pointer-events: auto;
+    transition: background 0.2s;
+}
+.debris-select-marker-close:hover {
+    background: #f87171;
+}
+
+@keyframes pulseDebris {
+    0% {
+        box-shadow: 0 0 0 0 cubic-bezier(0.18, 0.89, 0.32, 1.28) rgba(239, 68, 68, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+}

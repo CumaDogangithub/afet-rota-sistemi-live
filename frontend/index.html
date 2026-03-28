@@ -252,11 +252,18 @@
             <button class="modal-close" id="debrisReportClose">&times;</button>
         </div>
         <div class="modal-body">
-            <p id="debrisReportInstruction" class="debris-instruction">Haritada enkaz noktasini secmek icin tiklayin.</p>
-            <div id="debrisReportCoords" class="debris-coords" style="display:none;">
-                <span id="debrisReportLatLng"></span>
+            <p id="debrisReportInstruction" class="debris-instruction">Lutfen formu doldurun ve haritadan konumunuzu secin.</p>
+            
+            <div id="debrisLocationSection" style="margin-bottom: 20px; padding: 15px; background: rgba(59, 130, 246, 0.1); border: 1px dashed rgba(59, 130, 246, 0.5); border-radius: 8px; text-align: center;">
+                <button type="button" id="selectDebrisMapBtn" class="btn btn-secondary" style="margin-bottom: 8px; width: 100%;">
+                    📍 Haritadan Konum Sec
+                </button>
+                <div id="debrisReportCoords" class="debris-coords" style="display:none; margin:0; padding:0; background:none;">
+                    <span id="debrisReportLatLng" style="color: #34d399; font-weight: 600;"></span>
+                </div>
             </div>
-            <form id="debrisReportForm" class="debris-form" style="display:none;">
+
+            <form id="debrisReportForm" class="debris-form">
                 <div class="form-group">
                     <label class="form-label">Isim Soyisim</label>
                     <input type="text" id="debrisName" class="form-input" placeholder="Opsiyonel">

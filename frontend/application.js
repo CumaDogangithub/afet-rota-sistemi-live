@@ -20,6 +20,7 @@ let dangerZoneLayers = [];
 let routeLabelLayers = [];
 let isAnalyzing = false;
 let debrisReportMode = false;
+let debrisSelectionPending = false;
 let debrisReportLatLng = null;
 let reportedDebrisMarkers = [];
 
@@ -337,47 +338,58 @@ function renderEmergencyNumbers() {
 // ============================================
 
 function startDebrisReportMode() {
-    // Haritanin merkezini al (Hemen formu acmak icin en iyi UX)
-    const center = map.getCenter();
-    debrisReportLatLng = { lat: center.lat, lng: center.lng };
+    debrisReportMode = true;
+    debrisSelectionPending = false;
+    
+    // Eger onceden kalmis gecici marker varsa silmiyoruz, kullanici silene kadar kalir
+    // ama form acildiginda mevcut olan koordinat null kalmamasi lazim.
+    if (!window._tempDebrisMarker) {
+        debrisReportLatLng = null;
+        document.getElementById('debrisReportCoords').style.display = 'none';
+        document.getElementById('debrisReportInstruction').textContent = 'Lutfen formu doldurun ve haritadan konumunuzu secin.';
+    }
 
-    // Formu göster
-    document.getElementById('debrisReportInstruction').textContent = 'Konum olarak haritanin merkezi alindi. Lutfen formu doldurun.';
-    document.getElementById('debrisReportCoords').style.display = 'block';
-    
-    // Eger onceden span yoksa HTML'den temizle ve span atamasi yap:
-    const latLngEl = document.getElementById('debrisReportLatLng');
-    if(latLngEl) latLngEl.textContent = `Enlem: ${center.lat.toFixed(6)}, Boylam: ${center.lng.toFixed(6)}`;
-    
-    document.getElementById('debrisReportForm').style.display = 'flex';
     document.getElementById('debrisFormMessage').textContent = '';
     document.getElementById('debrisFormMessage').className = 'debris-form-message';
     debrisReportForm.reset();
 
-    // Haritada da goster
-    if (window._tempDebrisMarker) { map.removeLayer(window._tempDebrisMarker); }
-    window._tempDebrisMarker = L.circleMarker([center.lat, center.lng], {
-        radius: 12, color: '#ef4444', fillColor: '#f87171', fillOpacity: 0.8, weight: 2
-    }).addTo(map);
-
-    // Modali HEMEN ac
+    // Modali HEMEN ac (Kullanici "Haritadan Konum Sec" butonuna basicak)
     openModal(debrisReportModal);
 
     setStatus('Enkaz bildirim formu acildi.', 'info');
 }
 
 function cancelDebrisReportMode() {
-    debrisReportLatLng = null;
-    if (window._tempDebrisMarker) { map.removeLayer(window._tempDebrisMarker); }
+    debrisReportMode = false;
+    debrisSelectionPending = false;
+    // Kullanici X ile bilerek kapatirsa gecici isareti temizle (opsiyonel)
     closeModal(debrisReportModal);
     setStatus('Sistem hazir. Haritada A ve B noktalarini sec.', 'info');
 }
 
-// Artik haritaya tiklanmasina gerek yok, fonksiyonu iptal ettik (veya bos biraktik)
-function onDebrisPointSelected(lat, lng) {
-    // Kullanilmiyor
-}
+// "Haritadan Konum Sec" Butonu Tiklaninca
+document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('selectDebrisMapBtn');
+    if(btn) {
+        btn.addEventListener('click', () => {
+            debrisSelectionPending = true;
+            closeModal(debrisReportModal); // Haritayi gorebilmesi icin modali gecici gizle
+            setStatus('Haritada bir enkaz noktasi secmek icin tiklayin.', 'loading');
+        });
+    }
+});
 
+// Ozel marker'daki "X" kapatma butonuna basilinca
+window.removeTempDebrisMarker = function(event) {
+    if (event) event.stopPropagation();
+    if (window._tempDebrisMarker) {
+        map.removeLayer(window._tempDebrisMarker);
+        window._tempDebrisMarker = null;
+    }
+    debrisReportLatLng = null;
+    document.getElementById('debrisReportCoords').style.display = 'none';
+    document.getElementById('debrisReportLatLng').textContent = '';
+};
 
 async function submitDebrisReport(e) {
     e.preventDefault();
@@ -454,7 +466,8 @@ async function submitDebrisReport(e) {
 
         // Modu kapat
         setTimeout(() => {
-            debrisReportLatLng = null;
+            debrisReportMode = false;
+            debrisSelectionPending = false;
             closeModal(debrisReportModal);
             setStatus('Enkaz bildirimi eklendi.', 'success');
         }, 1500);
@@ -585,6 +598,40 @@ function initMap() {
 }
 
 function onMapClick(e) {
+    // Eger kullanici haritadan enkaz secmek icin bekliyorsa
+    if (debrisReportMode && debrisSelectionPending) {
+        debrisSelectionPending = false;
+        debrisReportLatLng = { lat: e.latlng.lat, lng: e.latlng.lng };
+
+        // Oncekini temizle
+        if (window._tempDebrisMarker) { map.removeLayer(window._tempDebrisMarker); }
+
+        // Ozel custom divIcon marker
+        const iconHTML = `
+            <div class="debris-select-marker-inner">
+                !
+                <div class="debris-select-marker-close" onclick="window.removeTempDebrisMarker(event)">×</div>
+            </div>`;
+            
+        const customIcon = L.divIcon({
+            className: 'debris-select-marker',
+            html: iconHTML,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+        });
+
+        window._tempDebrisMarker = L.marker([e.latlng.lat, e.latlng.lng], { icon: customIcon }).addTo(map);
+
+        // Modali geri ac ve bilgiyi guncelle
+        document.getElementById('debrisReportCoords').style.display = 'block';
+        document.getElementById('debrisReportLatLng').textContent = `Enlem: ${e.latlng.lat.toFixed(6)}, Boylam: ${e.latlng.lng.toFixed(6)}`;
+        document.getElementById('debrisReportInstruction').textContent = 'Konum secildi. Lutfen formu doldurun.';
+        
+        openModal(debrisReportModal);
+        setStatus('Konum secildi. Formu doldurmaya devam edin.', 'success');
+        return;
+    }
+
     if (isAnalyzing) return;
 
     if (!markers.A) {
