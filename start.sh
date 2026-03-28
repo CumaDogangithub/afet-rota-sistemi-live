@@ -19,19 +19,21 @@ if [ ! -f ".env" ]; then
     echo ".env dosyasi olusturuldu. (Eger API anahtarini degistirmeniz gerekirse burayi kullaabilirsiniz)."
 fi
 
+# Determine python command
+if command -v python3 &>/dev/null; then
+  PYTHON_CMD="python3"
+else
+  PYTHON_CMD="python"
+fi
+
 echo "[4/4] Sunucu baslatiliyor..."
 echo ""
 echo "========================================================"
-echo "Lutfen tarayicizidan http://127.0.0.1:8000/static/index.html adresine gidin."
+echo "Lutfen bekleyin, harita yukleniyor (14MB)..."
+echo "Tarayici otomatik olarak http://127.0.0.1:8000/static/index.html adresine yonlenecek."
 echo "========================================================"
 
-# Try to open the browser automatically
-if which xdg-open > /dev/null
-then
-  xdg-open http://127.0.0.1:8000/static/index.html &
-elif which open > /dev/null
-then
-  open http://127.0.0.1:8000/static/index.html &
-fi
+# Sunucu baslarken tarayicinin "Baglanti Reddedildi" dememesi icin 2 saniye bekleyip sonra acalim
+(sleep 3 && (which open > /dev/null && open http://127.0.0.1:8000/static/index.html || xdg-open http://127.0.0.1:8000/static/index.html)) &
 
-python -m backend.app
+$PYTHON_CMD -m backend.app

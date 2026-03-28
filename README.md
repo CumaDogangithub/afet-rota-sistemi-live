@@ -13,20 +13,18 @@ Uydu/drone görüntülerinden **yapay zeka ile enkaz tespiti** yaparak, afet bö
 
 ## 📋 Kurulum
 
-## 🚀 Hızlı Kurulum
-
-Projeyi klonladıktan sonra tek yapmanız gereken işletim sisteminize uygun **başlatma dosyasını** çalıştırmaktır. Sistem tüm sanal ortamları (`venv`), kütüphaneleri ve `.env` dosyalarını otomatik olarak sizin için kurup haritayı tarayıcıda açacaktır.
+Projenin yeni kullanıcılar tarafından **sıfır ayar** ile çalıştırılabilmesi için her şey otomatikleştirilmiştir.
 
 **Windows Kullanıcıları İçin:**
 Proje klasöründeki `start.bat` dosyasına **çift tıklayın**.
 
 **Mac / Linux Kullanıcıları İçin:**
-Terminali açıp proje dizininde şu komutu çalıştırın:
+Terminalde şu komutu çalıştırın:
 ```bash
 ./start.sh
 ```
 
-*(Not: İlk çalıştırmada OSMNx internetten Antakya yön haritasını indireceği için kısa bir bekleme yaşanabilir).*
+*(Not: İlk açılışta 14MB'lık Antakya harita dosyası RAM'e yüklendiği için tarayıcı açıldığında 3-5 saniye "Bağlantı Bekleniyor" diyebilir, lütfen bekleyin).*
 
 ## 🗺️ Harita ve Rota Motoru
 Proje, Antakya bölgesi için önceden indirilmiş bir yol ağı (`antakya_graph.graphml`) ile birlikte gelir. Bu sayede ilk açılışta internetten harita indirme bekletmesi yaşanmaz ve "nokta bulunamadı" hataları önlenir.
@@ -51,8 +49,8 @@ afet-rota-sistemi/
 │   └── config.py           # Merkezi konfigürasyon
 ├── frontend/
 │   ├── index.html           # Ana sayfa
-│   ├── style.css            # Premium dark theme
-│   └── app.js               # Frontend controller
+│   ├── style2.css           # Premium dark theme
+│   └── application.js       # Frontend controller
 ├── .env                     # API anahtarları (git'e dahil değil)
 ├── requirements.txt         # Python bağımlılıkları
 └── README.md

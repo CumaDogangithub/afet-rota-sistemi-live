@@ -10,7 +10,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 
 
 # --- Roboflow AI Ayarları ---
-ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY", "")
+ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY", "n1d0mIipj5CVoIl2sCpi")
 ROBOFLOW_API_URL = os.getenv("ROBOFLOW_API_URL", "https://serverless.roboflow.com")
 ROBOFLOW_MODEL_ID = os.getenv("ROBOFLOW_MODEL_ID", "earthquake-damage-detection-xmfgr/1")
 

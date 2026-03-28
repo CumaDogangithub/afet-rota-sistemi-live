@@ -23,8 +23,10 @@ if not exist .env (
 echo [4/4] Sunucu baslatiliyor...
 echo.
 echo ========================================================
-echo Lutfen tarayicidan http://127.0.0.1:8000/static/index.html adresine gidin.
+echo Lutfen bekleyin, harita yukleniyor (14MB)...
+echo Tarayici otomatik olarak http://127.0.0.1:8000/static/index.html adresine yonlenecek.
 echo ========================================================
+timeout /t 3 /nobreak > nul
 start http://127.0.0.1:8000/static/index.html
 python -m backend.app
 
