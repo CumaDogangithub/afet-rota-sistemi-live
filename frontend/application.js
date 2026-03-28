@@ -407,17 +407,35 @@ async function submitDebrisReport(e) {
     submitBtn.disabled = true;
     showDebrisMessage('Gonderiliyor...', '');
 
+    // Yerel kaydetme yardimci fonksiyonu
+    const saveDebrisLocalFallback = (data) => {
+        const saved = JSON.parse(localStorage.getItem('enkaz_bildirimleri') || '[]');
+        data.id = 'local_' + Date.now();
+        saved.push(data);
+        localStorage.setItem('enkaz_bildirimleri', JSON.stringify(saved));
+    };
+
     try {
         // Firebase'e kaydet
         if (db) {
-            await db.collection('enkaz_bildirimleri').add(reportData);
-            showDebrisMessage('Enkaz bildirimi basariyla kaydedildi!', 'success');
+            const firestorePromise = db.collection('enkaz_bildirimleri').add(reportData);
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
+            
+            try {
+                await Promise.race([firestorePromise, timeoutPromise]);
+                showDebrisMessage('Enkaz bildirimi basariyla kaydedildi!', 'success');
+            } catch (err) {
+                if (err.message === 'timeout' || String(err).includes('offline')) {
+                    console.warn('Firebase yanit vermedi. Bildiri yerel olarak kaydediliyor...');
+                    saveDebrisLocalFallback(reportData);
+                    showDebrisMessage('Sunucu yanit vermedi. Bildiri yerel olarak kaydedildi.', 'success');
+                } else {
+                    throw err;
+                }
+            }
         } else {
             // Firebase yoksa localStorage'a kaydet (fallback)
-            const saved = JSON.parse(localStorage.getItem('enkaz_bildirimleri') || '[]');
-            reportData.id = 'local_' + Date.now();
-            saved.push(reportData);
-            localStorage.setItem('enkaz_bildirimleri', JSON.stringify(saved));
+            saveDebrisLocalFallback(reportData);
             showDebrisMessage('Bildiri yerel olarak kaydedildi. (Firebase yapilandirilmamis)', 'success');
         }
 
