@@ -377,6 +377,37 @@ document.addEventListener('DOMContentLoaded', () => {
             setStatus('Haritada bir enkaz noktasi secmek icin tiklayin.', 'loading');
         });
     }
+
+    // "Otomatik Konum Sec (Merkez)" Butonu Tiklaninca
+    const autoBtn = document.getElementById('autoDebrisMapBtn');
+    if(autoBtn) {
+        autoBtn.addEventListener('click', () => {
+            const center = map.getCenter();
+            debrisReportLatLng = { lat: center.lat, lng: center.lng };
+            
+            // Koordinatlari goster
+            document.getElementById('debrisReportCoords').style.display = 'block';
+            document.getElementById('debrisReportLatLng').textContent = `Enlem: ${center.lat.toFixed(6)}, Boylam: ${center.lng.toFixed(6)}`;
+            
+            // Gecici marker ekle
+            if (window._tempDebrisMarker) { map.removeLayer(window._tempDebrisMarker); }
+            const iconHTML = `
+                <div class="debris-select-marker-inner" style="background:#ef4444; border-color:white; box-shadow:0 4px 10px rgba(0,0,0,0.5);">
+                    !
+                    <div class="debris-select-marker-close" onclick="window.removeTempDebrisMarker(event)">×</div>
+                </div>`;
+            window._tempDebrisMarker = L.marker([center.lat, center.lng], {
+                icon: L.divIcon({
+                    className: 'debris-select-marker',
+                    html: iconHTML,
+                    iconSize: [40, 40],
+                    iconAnchor: [20, 20]
+                })
+            }).addTo(map);
+            
+            showDebrisMessage('Konum harita merkezi olarak ayarlandi.', 'success');
+        });
+    }
 });
 
 // Ozel marker'daki "X" kapatma butonuna basilinca
@@ -566,7 +597,8 @@ function addDebrisMarkerToMap(data) {
 
     const marker = L.marker([data.lat, data.lng], {
         icon: customIcon,
-        debrisId: data.id
+        debrisId: data.id,
+        yikilma_orani: data.yikilma_orani // Eklenen alan (rota motoru icin)
     }).addTo(map);
 
     // Popup icerigi
@@ -580,8 +612,10 @@ function addDebrisMarkerToMap(data) {
     if (data.aciklama) popupHtml += `<b>Not:</b> ${data.aciklama}<br>`;
     if (data.tarih) {
         const d = new Date(data.tarih);
-        popupHtml += `<span style="color:#94a3b8;font-size:11px;">${d.toLocaleString('tr-TR')}</span>`;
+        popupHtml += `<span style="color:#94a3b8;font-size:11px;">${d.toLocaleString('tr-TR')}</span><br>`;
     }
+    popupHtml += `<hr style="margin:5px 0; border:0; border-top:1px solid #334155;">`;
+    popupHtml += `<span style="color:#94a3b8;font-size:11px;">Koor: ${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}</span>`;
     popupHtml += '</div>';
 
     marker.bindPopup(popupHtml);
@@ -932,6 +966,16 @@ async function otonomAnalizEt() {
         formData.append('hedef_lat', markers.B.getLatLng().lat);
         formData.append('hedef_lon', markers.B.getLatLng().lng);
 
+        // Kullanicinin manuel ekledigi enkazlari da rotaya gonder
+        const activeManualDebris = reportedDebrisMarkers.map(m => {
+            return {
+                lat: m.getLatLng().lat,
+                lon: m.getLatLng().lng,
+                radius: m.options.yikilma_orani === 'hafif' ? 30 : (m.options.yikilma_orani === 'orta' ? 50 : 80)
+            };
+        });
+        formData.append('manuel_enkazlar', JSON.stringify(activeManualDebris));
+
         setStep('route');
         setStatus('Guvenli rota hesaplaniyor...', 'loading');
 
@@ -991,23 +1035,25 @@ function drawResults(res) {
             const markerColor = riskScore >= 0.9 ? '#dc2626' : riskScore >= 0.5 ? '#f97316' : '#22c55e';
             const markerFill = riskScore >= 0.9 ? '#f87171' : riskScore >= 0.5 ? '#fdba74' : '#86efac';
 
-            const marker = L.circleMarker(coord, {
-                radius: 7,
-                color: markerColor,
-                fillColor: markerFill,
-                fillOpacity: 0.9,
-                weight: 2
-            }).addTo(map);
-            marker.bindPopup(
-                `<div style="font-family:Inter,sans-serif;font-size:13px;">
-                    <b>Enkaz Tespiti</b><br>
-                    Sinif: ${enkaz.sinif || 'debris'}<br>
-                    Guven: %${confidencePercent}<br>
-                    Tehlike Yaricapi: ${radius}m<br>
-                    Risk: %${riskPercent} (${riskLabel})
-                </div>`
-            );
-            enkazLayers.push(marker);
+            if (enkaz.sinif !== 'manual_report') {
+                const marker = L.circleMarker(coord, {
+                    radius: 7,
+                    color: markerColor,
+                    fillColor: markerFill,
+                    fillOpacity: 0.9,
+                    weight: 2
+                }).addTo(map);
+                marker.bindPopup(
+                    `<div style="font-family:Inter,sans-serif;font-size:13px;">
+                        <b>Enkaz Tespiti</b><br>
+                        Sinif: ${enkaz.sinif || 'debris'}<br>
+                        Guven: %${confidencePercent}<br>
+                        Tehlike Yaricapi: ${radius}m<br>
+                        Risk: %${riskPercent} (${riskLabel})
+                    </div>`
+                );
+                enkazLayers.push(marker);
+            }
         });
     }
 
@@ -1301,6 +1347,16 @@ async function runDroneAnalysis() {
                 formData.append('start_lon', gpsA.lon);
                 formData.append('end_lat', gpsB.lat);
                 formData.append('end_lon', gpsB.lon);
+
+                // Kullanicinin manuel ekledigi enkazlari da drone rotasina gonder
+                const activeManualDebris = reportedDebrisMarkers.map(m => {
+                    return {
+                        lat: m.getLatLng().lat,
+                        lon: m.getLatLng().lng,
+                        radius: m.options.yikilma_orani === 'hafif' ? 30 : (m.options.yikilma_orani === 'orta' ? 50 : 80)
+                    };
+                });
+                formData.append('manuel_enkazlar', JSON.stringify(activeManualDebris));
 
                 const response = await fetch(`${API_URL}/api/drone-analiz`, {
                     method: 'POST',

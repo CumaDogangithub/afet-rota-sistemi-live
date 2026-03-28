@@ -74,7 +74,8 @@ async def otonom_analiz(
     se_lat: float = Form(...), se_lon: float = Form(...),
     baslangic_lat: float = Form(...), baslangic_lon: float = Form(...),
     hedef_lat: float = Form(...), hedef_lon: float = Form(...),
-    uydu_fotosu: UploadFile = File(...)
+    uydu_fotosu: UploadFile = File(...),
+    manuel_enkazlar: str = Form(None)
 ):
     """
     Otonom afet analiz endpoint'i.
@@ -113,7 +114,25 @@ async def otonom_analiz(
             tmp_path, img_w, img_h,
             nw_lat, nw_lon, se_lat, se_lon
         )
-        logger.info(f"🚨 {len(debris_list)} enkaz tespit edildi")
+        
+        # Manuel enkaz isleme (UI'den gelen)
+        if manuel_enkazlar:
+            import json
+            try:
+                manual_list = json.loads(manuel_enkazlar)
+                for m in manual_list:
+                    debris_list.append({
+                        "lat": m["lat"],
+                        "lon": m["lon"],
+                        "confidence": 1.0,
+                        "class": "manual_report",
+                        "danger_radius_m": m.get("radius", 50),
+                        "risk_score": 100
+                    })
+            except Exception as e:
+                logger.error(f"Manuel enkaz parse hatası: {e}")
+
+        logger.info(f"🚨 {len(debris_list)} toplam enkaz (Yapay Zeka + Manuel) tespit/dahil edildi")
 
         # 2. ROTA HESAPLA
         logger.info("🗺️ Güvenli rota hesaplanıyor...")
@@ -241,7 +260,8 @@ async def drone_analiz(
     start_lat: float = Form(...),
     start_lon: float = Form(...),
     end_lat: float = Form(...),
-    end_lon: float = Form(...)
+    end_lon: float = Form(...),
+    manuel_enkazlar: str = Form(None)
 ):
     """
     Drone/Helikopter Modu v2:
@@ -278,7 +298,25 @@ async def drone_analiz(
             tmp_path, img_w, img_h,
             nw_lat, nw_lon, se_lat, se_lon
         )
-        logger.info(f"🚨 {len(debris_list)} enkaz tespit edildi")
+        
+        # Manuel enkaz isleme (UI'den gelen)
+        if manuel_enkazlar:
+            import json
+            try:
+                manual_list = json.loads(manuel_enkazlar)
+                for m in manual_list:
+                    debris_list.append({
+                        "lat": m["lat"],
+                        "lon": m["lon"],
+                        "confidence": 1.0,
+                        "class": "manual_report",
+                        "danger_radius_m": m.get("radius", 50),
+                        "risk_score": 100
+                    })
+            except Exception as e:
+                logger.error(f"Manuel enkaz parse hatası: {e}")
+
+        logger.info(f"🚨 {len(debris_list)} toplam enkaz (Yapay Zeka + Manuel) tespit/dahil edildi")
 
         # 3. Güvenli Rota Hesapla (routing_engine.py — Gerçek sokak ağı)
         logger.info("🗺️ Drone rotası hesaplanıyor (OSM sokak ağı)...")
