@@ -15,30 +15,18 @@ Uydu/drone görüntülerinden **yapay zeka ile enkaz tespiti** yaparak, afet bö
 
 ## 🚀 Hızlı Kurulum
 
-1. **Repoyu Klonlayın:**
-   ```bash
-   git clone <repo-url>
-   cd afet-rota-sistemi
-   ```
+Projeyi klonladıktan sonra tek yapmanız gereken işletim sisteminize uygun **başlatma dosyasını** çalıştırmaktır. Sistem tüm sanal ortamları (`venv`), kütüphaneleri ve `.env` dosyalarını otomatik olarak sizin için kurup haritayı tarayıcıda açacaktır.
 
-2. **Bağımlılıkları Yükleyin:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Windows için: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+**Windows Kullanıcıları İçin:**
+Proje klasöründeki `start.bat` dosyasına **çift tıklayın**.
 
-3. **Yapılandırma (.env):**
-   `.env.example` dosyasını `.env` olarak kopyalayın ve `ROBOFLOW_API_KEY` kısmına kendi anahtarınızı ekleyin.
-   ```bash
-   cp .env.example .env
-   ```
+**Mac / Linux Kullanıcıları İçin:**
+Terminali açıp proje dizininde şu komutu çalıştırın:
+```bash
+./start.sh
+```
 
-4. **Çalıştırın:**
-   ```bash
-   python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000
-   ```
-   Ardından tarayıcıda `http://localhost:8000/static/index.html` adresine gidin.
+*(Not: İlk çalıştırmada OSMNx internetten Antakya yön haritasını indireceği için kısa bir bekleme yaşanabilir).*
 
 ## 🗺️ Harita ve Rota Motoru
 Proje, Antakya bölgesi için önceden indirilmiş bir yol ağı (`antakya_graph.graphml`) ile birlikte gelir. Bu sayede ilk açılışta internetten harita indirme bekletmesi yaşanmaz ve "nokta bulunamadı" hataları önlenir.
