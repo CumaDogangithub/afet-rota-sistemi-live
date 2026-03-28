@@ -8,6 +8,7 @@ Yeni yaklaşım:  Yarıçaplı edge ağırlıklandırma → weighted shortest_pa
 """
 import logging
 import math
+import os
 import osmnx as ox
 import networkx as nx
 from backend.config import DANGER_WEIGHT_MULTIPLIER
@@ -25,10 +26,25 @@ G_REGION = None
 def load_city_graph(city_name: str) -> None:
     """Şehir yol ağını RAM'e yükler. Sunucu başlangıcında 1 kez çağrılır."""
     global G_REGION
-    logger.info(f"🌍 {city_name} yol ağı RAM'e yükleniyor...")
+    
+    # Yerel bir .graphml dosyası var mı kontrol et (Daha hızlı yükleme için)
+    cache_file = "antakya_graph.graphml"
+    
+    if os.path.exists(cache_file):
+        logger.info(f"📂 Yerel harita dosyası bulundu: {cache_file}. Yükleniyor...")
+        try:
+            G_REGION = ox.load_graphml(filepath=cache_file)
+            logger.info(f"✅ Yerel harita hazır! ({G_REGION.number_of_nodes()} düğüm)")
+            return
+        except Exception as e:
+            logger.warning(f"⚠️ Yerel dosya okunamadı, OSM'den denenecek: {e}")
+
+    logger.info(f"🌍 {city_name} yol ağı OSM üzerinden indiriliyor/yükleniyor...")
     try:
         G_REGION = ox.graph_from_place(city_name, network_type="drive")
-        logger.info(f"✅ {city_name} yol ağı hazır! ({G_REGION.number_of_nodes()} düğüm, {G_REGION.number_of_edges()} kenar)")
+        # Sonraki sefer için kaydet
+        ox.save_graphml(G_REGION, filepath=cache_file)
+        logger.info(f"✅ {city_name} yol ağı hazır! ({G_REGION.number_of_nodes()} düğüm)")
     except Exception as e:
         logger.error(f"❌ Harita yüklenemedi: {e}")
         raise
@@ -51,21 +67,28 @@ def _apply_danger_weights(
     """
     Enkaz noktaları etrafındaki edge'lere tehlike ağırlığı uygular.
     
-    Eski yöntem (node silme) yerine edge ağırlıklandırma kullanıyoruz çünkü:
-    - Node silmek bazen grafı bölüp rota bulamaz hale getirir
-    - Ağırlıklandırma, rotayı "uzak tutmaya" çalışır ama tamamen kapatmaz
-    - Daha gerçekçi: Bazı yollar tehlikeli ama geçilebilir durumda olabilir
+    PERFORMANS İYİLEŞTİRMESİ:
+    Sadece enkazın yakınındaki (bounding box) edge'leri kontrol eder.
+    O(Debris * Edges) karmaşıklığını büyük ölçüde azaltır.
     """
+    # Sabit: 1 derece enlem/boylam yaklaşık kaç metre? (Antakya civarı)
+    METERS_PER_DEG = 111320.0
+    
     # Tüm edge'lere orijinal ağırlığı kaydet (yoksa length kullan)
     for u, v, k, data in G.edges(keys=True, data=True):
         if "danger_weight" not in data:
-            data["danger_weight"] = data.get("length", 100)
+            data["danger_weight"] = float(data.get("length", 100))
 
     for debris in debris_list:
         d_lat = debris["lat"]
         d_lon = debris["lon"]
         radius = debris["danger_radius_m"]
-
+        
+        # Mekansal Filtre: Yarıçapı derece cinsine çevir (güvenlik payıyla %20 fazla)
+        # Lat/Lon farkı bu değerden büyükse haversine'e girmeye lüzum yok.
+        lat_margin = (radius * 1.2) / METERS_PER_DEG
+        lon_margin = (radius * 1.2) / (METERS_PER_DEG * 0.8) # cos(36) ~ 0.8
+        
         affected_edges = 0
 
         for u, v, k, data in G.edges(keys=True, data=True):
@@ -75,21 +98,25 @@ def _apply_danger_weights(
             mid_lat = (u_data["y"] + v_data["y"]) / 2
             mid_lon = (u_data["x"] + v_data["x"]) / 2
 
+            # HIZLI FİLTRE: Bounding Box dışındaysa atla
+            if abs(mid_lat - d_lat) > lat_margin or abs(mid_lon - d_lon) > lon_margin:
+                continue
+
+            # Sadece yakınsa pahalı haversine hesabını yap
             distance = _haversine_distance(d_lat, d_lon, mid_lat, mid_lon)
 
             if distance < radius:
                 # Mesafeye ters orantılı ağırlık çarpanı
-                # Enkaza çok yakın → çok yüksek çarpan
-                # Yarıçap sınırına yakın → düşük çarpan
-                proximity_factor = 1 - (distance / radius)  # 0..1 (1 = tam üstünde)
-                weight_multiplier = 1 + (DANGER_WEIGHT_MULTIPLIER * proximity_factor ** 2)
-                data["danger_weight"] = data["danger_weight"] * weight_multiplier
+                proximity_factor = 1.0 - (distance / radius)
+                weight_multiplier = 1.0 + (DANGER_WEIGHT_MULTIPLIER * (proximity_factor ** 2))
+                data["danger_weight"] *= weight_multiplier
                 affected_edges += 1
 
-        logger.info(
-            f"Enkaz ({d_lat:.5f}, {d_lon:.5f}): "
-            f"yarıçap={radius}m, etkilenen_kenar={affected_edges}"
-        )
+        if affected_edges > 0:
+            logger.info(
+                f"Enkaz ({d_lat:.5f}, {d_lon:.5f}): "
+                f"yarıçap={radius}m, etkilenen_kenar={affected_edges}"
+            )
 
     return G
 

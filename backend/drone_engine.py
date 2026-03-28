@@ -15,9 +15,9 @@ from backend.config import ROBOFLOW_API_KEY, ROBOFLOW_MODEL_ID
 logger = logging.getLogger(__name__)
 
 # Orijinal engel_tespit.py parametreleri
-MIN_CONFIDENCE = 0.25
+MIN_CONFIDENCE = 0.20  # Daha hassas tespit (0.25 -> 0.20)
 MIN_SIZE = 10
-RISK_RADIUS_PADDING = 20  # Engelin etrafındaki ekstra kaçınma pikselleri
+RISK_RADIUS_PADDING = 40  # Binalardan daha uzak geçmek için (20 -> 40)
 
 CLIENT = InferenceHTTPClient(
     api_url="https://serverless.roboflow.com",
@@ -90,8 +90,8 @@ def _find_pixel_path(width: int, height: int, obstacles: list[dict], start: tupl
     logger.info("🗺️ A* Drone rotası hesaplanıyor...")
     
     # Performans için çalışma alanını küçült (Grid Resolution)
-    # 1 birim grid = 10 pixel
-    GRID_SIZE = 10
+    # 1 birim grid = 5 pixel (Daha hassas rota için 10 -> 5)
+    GRID_SIZE = 5
     
     gw = int(math.ceil(width / GRID_SIZE))
     gh = int(math.ceil(height / GRID_SIZE))
@@ -164,7 +164,8 @@ def _find_pixel_path(width: int, height: int, obstacles: list[dict], start: tupl
                 if (nx, ny) not in g_score or tentative_g_score < g_score[(nx, ny)]:
                     came_from[(nx, ny)] = current
                     g_score[(nx, ny)] = tentative_g_score
-                    f_score = tentative_g_score + heuristic((nx, ny), (ex, ey))
+                    # Heuristic Inflation (2.0x) — Rotayı çok daha hızlı hesaplamak için
+                    f_score = tentative_g_score + 2.0 * heuristic((nx, ny), (ex, ey))
                     heapq.heappush(open_set, (f_score, (nx, ny)))
                     
     # Yolu oluştur
