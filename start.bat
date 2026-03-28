@@ -6,7 +6,7 @@ echo ====================================
 
 :: Check if virtual environment exists
 if not exist venv (
-    echo [1/4] Sanal ortam (venv) olusturuluyor...
+    echo [1/4] Sanal ortam venv olusturuluyor...
     python -m venv venv
 )
 
