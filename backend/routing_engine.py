@@ -112,9 +112,10 @@ def _apply_danger_weights(
         d_lon = debris["lon"]
         radius = debris["danger_radius_m"]
         
-        # Mekansal Filtre: Sokaklar uzun olabileceği için margin'i biraz daha geniş tut (örn: radius + 300m)
-        lat_margin = (radius + 300.0) / METERS_PER_DEG
-        lon_margin = (radius + 300.0) / (METERS_PER_DEG * 0.8) # cos(36) ~ 0.8
+        # Mekansal Filtre: Sokaklar çok uzun olabileceği için margin'i devasa tut (örn: radius + 2000m)
+        # Eğer sokak segmenti 2km'den uzun değilse (ki şehir içinde imkansız) asla gözden kaçırmaz.
+        lat_margin = (radius + 2000.0) / METERS_PER_DEG
+        lon_margin = (radius + 2000.0) / (METERS_PER_DEG * 0.8) # cos(36) ~ 0.8
         
         affected_edges = 0
 
@@ -127,22 +128,19 @@ def _apply_danger_weights(
             mid_lat = (u_lat + v_lat) / 2
             mid_lon = (u_lon + v_lon) / 2
 
-            # HIZLI FİLTRE: Bounding Box dışındaysa atla
-            if abs(mid_lat - d_lat) > lat_margin or abs(mid_lon - d_lon) > lon_margin:
+            # HIZLI FİLTRE: Bounding Box. U, V veya Mid noktalarından en az BİRİ margin içindeyse hesapla
+            if (abs(u_lat - d_lat) > lat_margin and abs(v_lat - d_lat) > lat_margin and abs(mid_lat - d_lat) > lat_margin) or \
+               (abs(u_lon - d_lon) > lon_margin and abs(v_lon - d_lon) > lon_margin and abs(mid_lon - d_lon) > lon_margin):
                 continue
 
             # Noktanın doğru parçasına dik olan EN KISA mesafesini hesapla
             distance = _dist_to_segment(d_lat, d_lon, u_lat, u_lon, v_lat, v_lon)
 
-            # Sadece radius kadar değil, hafif güvenlik payıyla (radius * 1.1) kontrol edelim
-            if distance < (radius * 1.1):
-                proximity_factor = 1.0 - (distance / (radius * 1.1))
-                proximity_factor = max(0.01, proximity_factor)
-                
-                # Ağırlık çarpanını çok daha yüksek tutalım ki (örn 100000x) oradan ASLA geçmesin
-                base_multiplier = max(10000.0, DANGER_WEIGHT_MULTIPLIER * 100)
-                weight_multiplier = 1.0 + (base_multiplier * (proximity_factor ** 2))
-                data["danger_weight"] *= weight_multiplier
+            # Sadece radius kadar değil, %20 güvenlik payıyla (radius * 1.2) kontrol edelim
+            if distance < (radius * 1.2):
+                # Kademeli ceza (multiplier) yerine devasa SABİT bir ceza ekliyoruz (+ 1000 km).
+                # Böylece yol kenarından bile geçse kesinlikle o sokağa girmeyi reddedecek.
+                data["danger_weight"] += 1_000_000.0
                 affected_edges += 1
 
         if affected_edges > 0:
@@ -222,32 +220,54 @@ def calculate_route(
     if primary_route is None:
         raise RuntimeError("Güzergah bulunamadı. Noktaları daha geniş seçmeyi dene.")
 
-    primary_coords = [
-        [G_active.nodes[n]["y"], G_active.nodes[n]["x"]]
-        for n in primary_route
-    ]
+    # Gerçek A ve B noktalarını listenin başına ve sonuna ekle
+    # Gerçek sokak kıvrımlarını (geometry) çizmek için LineString'i kullan
+    primary_coords = [[start_lat, start_lon]]
+    for i in range(len(primary_route)):
+        if i > 0:
+            u_node = primary_route[i-1]
+            v_node = primary_route[i]
+            edge_data = G_active.get_edge_data(u_node, v_node)[0]
+            if "geometry" in edge_data:
+                # shapely LineString (lon, lat) formatındadır
+                for coord in list(edge_data["geometry"].coords)[1:]:
+                    primary_coords.append([coord[1], coord[0]])
+                continue
+        primary_coords.append([G_active.nodes[primary_route[i]]["y"], G_active.nodes[primary_route[i]]["x"]])
+    
+    primary_coords.append([end_lat, end_lon])
 
     # 5. Gerçek Bir Alternatif Rota Bul (Ana rotadaki kenarları cezalandırarak)
     # Önce ana rotadaki kenarların tehlike ağırlıklarını geçici olarak artıralım (örn. 5 kat)
     # Böylece algoritma mümkünse başka bir *güvenli* yol bulmaya çalışır.
     alt_coords = None
     if len(primary_route) > 1:
-        # Ana rota kenarlarının ağırlığını artır
+        # Ana rota kenarlarının ağırlığını orantısal artır (1.5x)
+        # Böylece mantıklı alternatif caddeler arar, 1km düz ceza gibi alakasız rotalar çizmez.
         for i in range(len(primary_route) - 1):
             u = primary_route[i]
             v = primary_route[i+1]
             if G_active.has_edge(u, v):
                 for k in G_active[u][v]:
                     if "danger_weight" in G_active[u][v][k]:
-                        G_active[u][v][k]["danger_weight"] *= 5.0
+                        G_active[u][v][k]["danger_weight"] *= 1.5
 
         alt_route = _find_path(G_active, start_node, end_node, weight="danger_weight")
         
         if alt_route and alt_route != primary_route:
-            alt_coords = [
-                [G_active.nodes[n]["y"], G_active.nodes[n]["x"]]
-                for n in alt_route
-            ]
+            alt_coords = [[start_lat, start_lon]]
+            for i in range(len(alt_route)):
+                if i > 0:
+                    u_node = alt_route[i-1]
+                    v_node = alt_route[i]
+                    edge_data = G_active.get_edge_data(u_node, v_node)[0]
+                    if "geometry" in edge_data:
+                        for coord in list(edge_data["geometry"].coords)[1:]:
+                            alt_coords.append([coord[1], coord[0]])
+                        continue
+                alt_coords.append([G_active.nodes[alt_route[i]]["y"], G_active.nodes[alt_route[i]]["x"]])
+            
+            alt_coords.append([end_lat, end_lon])
 
     logger.info(
         f"✅ Rota hazır: ana={len(primary_coords)} nokta"
