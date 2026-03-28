@@ -10,18 +10,72 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <!-- App CSS -->
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=2.3" />
 </head>
 <body>
 
 <!-- Kontrol Paneli -->
 <div class="control-panel">
     <div class="panel-header">
-        <h1>🛰️ Afet Rota Sistemi</h1>
+        <div class="panel-header-row">
+            <h1>🛰️ Afet Rota Sistemi</h1>
+            <button id="hidePanelBtn" class="btn-icon" title="Küçült">━</button>
+        </div>
         <p>Haritada A (başlangıç) ve B (hedef) noktalarını seç, yakınlaş ve analizi başlat.</p>
     </div>
     
     <div class="panel-body">
+        <!-- Koordinat Giriş Bölümü -->
+        <div class="coord-section">
+            <div class="coord-section-title">📌 Koordinat Girişi (WGS84)</div>
+
+            <!-- A Noktası -->
+            <div class="coord-group">
+                <div class="coord-group-label">
+                    <span class="coord-marker-badge" style="background:#3b82f6;">A</span>
+                    Başlangıç Noktası
+                </div>
+                <div class="coord-inputs">
+                    <div class="coord-field">
+                        <label class="coord-label" for="coordALat">Enlem</label>
+                        <input type="number" id="coordALat" class="coord-input" placeholder="36.202300" step="0.000001" min="-90" max="90">
+                    </div>
+                    <div class="coord-field">
+                        <label class="coord-label" for="coordALon">Boylam</label>
+                        <input type="number" id="coordALon" class="coord-input" placeholder="36.161300" step="0.000001" min="-180" max="180">
+                    </div>
+                    <button id="applyABtn" class="btn btn-coord" title="Koordinatı uygula">📍 Uygula</button>
+                </div>
+            </div>
+
+            <!-- B Noktası -->
+            <div class="coord-group">
+                <div class="coord-group-label">
+                    <span class="coord-marker-badge" style="background:#ef4444;">B</span>
+                    Hedef Noktası
+                </div>
+                <div class="coord-inputs">
+                    <div class="coord-field">
+                        <label class="coord-label" for="coordBLat">Enlem</label>
+                        <input type="number" id="coordBLat" class="coord-input" placeholder="36.205000" step="0.000001" min="-90" max="90">
+                    </div>
+                    <div class="coord-field">
+                        <label class="coord-label" for="coordBLon">Boylam</label>
+                        <input type="number" id="coordBLon" class="coord-input" placeholder="36.165000" step="0.000001" min="-180" max="180">
+                    </div>
+                    <button id="applyBBtn" class="btn btn-coord" title="Koordinatı uygula">🎯 Uygula</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Drone / Helikopter Modu Butonu -->
+        <div class="drone-mode-section" style="margin-bottom: 20px;">
+            <label for="droneFileInput" class="btn btn-upload" id="droneUploadLabel" style="width: 100%; text-align: center; background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3); color: #60a5fa;">
+                🚁 Drone/Helikopter Görüntüsü Yükle
+            </label>
+            <input type="file" id="droneFileInput" accept="image/*" style="position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; z-index: -1;">
+        </div>
+
         <div class="btn-group">
             <button id="analizBtn" class="btn btn-primary">🧠 ANALİZ BAŞLAT</button>
             <button id="resetBtn" class="btn btn-secondary">↺ Sıfırla</button>
@@ -68,7 +122,7 @@
         <span>Güvenli Rota</span>
     </div>
     <div class="legend-item">
-        <div class="legend-color" style="background: #fbbf24; opacity: 0.5;"></div>
+        <div class="legend-color" style="background: #3b82f6; opacity: 0.6;"></div>
         <span>Alternatif Rota</span>
     </div>
     <div class="legend-item">
@@ -81,6 +135,13 @@
     </div>
 </div>
 
+</div>
+
+<!-- Panel Açma Butonu (Panel Gizliyken Görünür) -->
+<button id="showPanelBtn" class="btn-show-panel">
+    ☰ Komuta Merkezi
+</button>
+
 <!-- Harita -->
 <div id="map"></div>
 
@@ -88,8 +149,26 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
-<!-- App JS -->
-<script src="app.js"></script>
+<!-- Drone Modu Overlay Ekranı (Başlangıçta Gizli) -->
+<div id="droneModeOverlay" class="drone-overlay">
+    <div class="drone-toolbar">
+        <div class="drone-toolbar-left">
+            <h2>🚁 Drone/Helikopter Modu</h2>
+            <span id="droneInstruction" class="drone-instruction">1. Başlangıç noktasını (A) seçmek için görsele tıklayın.</span>
+        </div>
+        <div class="drone-toolbar-right">
+            <button id="droneAnalyzeBtn" class="btn btn-primary" disabled>🧠 Analiz Başlat</button>
+            <button id="droneCloseBtn" class="btn btn-secondary">❌ Kapat</button>
+        </div>
+    </div>
+    
+    <div class="drone-canvas-container" id="droneCanvasContainer">
+        <!-- Canvas buraya yüklenecek -->
+        <canvas id="droneCanvas"></canvas>
+    </div>
+</div>
 
+<!-- App JS -->
+<script src="app.js?v=2.3"></script>
 </body>
 </html>

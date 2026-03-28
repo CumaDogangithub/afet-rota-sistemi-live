@@ -309,6 +309,23 @@ def calculate_danger_radius(
     return round(danger_radius, 1)
 
 
+def _calculate_risk_score(class_name: str) -> float:
+    """
+    AstroGuard risk skorlama motoru (engel_tespit.py'den entegre).
+    Sınıfa göre risk skoru döndürür:
+    - collapsed (çökmüş) → 0.95 (kritik tehlike)
+    - damaged (hasarlı) → 0.65 (orta tehlike)
+    - diğer → 0.20 (düşük tehlike)
+    """
+    class_lower = class_name.lower()
+    if class_lower == 'collapsed':
+        return 0.95
+    elif class_lower == 'damaged':
+        return 0.65
+    else:
+        return 0.20
+
+
 def analyze_image(
     image_path: str,
     img_w: int, img_h: int,
@@ -316,7 +333,9 @@ def analyze_image(
     se_lat: float, se_lon: float
 ) -> list[dict]:
     """
-    Tam analiz pipeline: Tespit → GPS dönüşüm → Tehlike yarıçapı.
+    Tam analiz pipeline: Tespit → GPS dönüşüm → Tehlike yarıçapı → Risk skoru.
+    
+    AstroGuard engel tespit motorundan risk skorlama entegre edilmiştir.
     
     Returns:
         Her bir enkaz için:
@@ -325,7 +344,8 @@ def analyze_image(
             "confidence": float,
             "class": str,
             "danger_radius_m": float,
-            "area_px": int
+            "area_px": int,
+            "risk_score": float
         }
     """
     detections = detect_debris(image_path)
@@ -342,6 +362,7 @@ def analyze_image(
             img_w, img_h,
             nw_lat, nw_lon, se_lat, se_lon
         )
+        risk = _calculate_risk_score(det["class"])
         results.append({
             "lat": round(lat, 7),
             "lon": round(lon, 7),
@@ -349,7 +370,9 @@ def analyze_image(
             "class": det["class"],
             "danger_radius_m": radius,
             "area_px": det["area_px"],
+            "risk_score": risk,
         })
 
-    logger.info(f"Analiz tamamlandı: {len(results)} enkaz, tehlike yarıçapları hesaplandı")
+    logger.info(f"Analiz tamamlandı: {len(results)} enkaz, tehlike yarıçapları ve risk skorları hesaplandı")
     return results
+

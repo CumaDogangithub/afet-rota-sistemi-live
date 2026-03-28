@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.config import HOST, PORT, DEFAULT_CITY
 from backend.ai_engine import analyze_image
+from backend.drone_engine import analyze_drone_image
 from backend.routing_engine import load_city_graph, calculate_route
 
 # Loglama ayarları
@@ -122,6 +123,7 @@ async def otonom_analiz(
                     "confidence": d["confidence"],
                     "sinif": d["class"],
                     "tehlike_yaricapi_m": d["danger_radius_m"],
+                    "risk_score": d["risk_score"],
                 }
                 for d in debris_list
             ],
@@ -140,6 +142,128 @@ async def otonom_analiz(
         return {"durum": "hata", "mesaj": "Beklenmeyen bir hata oluştu. Loglara bakın."}
     finally:
         # Geçici dosyayı temizle
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+@app.post("/api/goruntu-analiz")
+async def goruntu_analiz(
+    nw_lat: float = Form(...), nw_lon: float = Form(...),
+    se_lat: float = Form(...), se_lon: float = Form(...),
+    goruntu: UploadFile = File(...)
+):
+    """
+    Harici görüntü analiz endpoint'i.
+
+    Kullanıcının yüklediği enkaz görüntüsünü AI motoruyla analiz eder.
+    Rota hesabı yapmaz, sadece enkaz tespiti ve konum bilgisi döndürür.
+    """
+    logger.info("=" * 50)
+    logger.info("🖼️ HARİCİ GÖRÜNTÜ ANALİZ İSTEĞİ")
+    logger.info(f"   Viewport: NW({nw_lat:.5f}, {nw_lon:.5f}) → SE({se_lat:.5f}, {se_lon:.5f})")
+    logger.info(f"   Dosya: {goruntu.filename}")
+
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    tmp_path = tmp_file.name
+
+    try:
+        content = await goruntu.read()
+        tmp_file.write(content)
+        tmp_file.close()
+
+        img = cv2.imread(tmp_path)
+        if img is None:
+            raise HTTPException(status_code=400, detail="Görüntü okunamadı.")
+        img_h, img_w = img.shape[:2]
+        logger.info(f"📸 Görüntü boyutu: {img_w}x{img_h}")
+
+        # AI Analiz
+        logger.info("🧠 AI analiz başlatılıyor...")
+        debris_list = analyze_image(
+            tmp_path, img_w, img_h,
+            nw_lat, nw_lon, se_lat, se_lon
+        )
+        logger.info(f"🚨 {len(debris_list)} enkaz tespit edildi")
+
+        response = {
+            "durum": "basarili",
+            "tespit_sayisi": len(debris_list),
+            "enkazlar": [
+                {
+                    "lat": d["lat"],
+                    "lon": d["lon"],
+                    "confidence": d["confidence"],
+                    "sinif": d["class"],
+                    "tehlike_yaricapi_m": d["danger_radius_m"],
+                    "risk_score": d["risk_score"],
+                }
+                for d in debris_list
+            ],
+        }
+
+        logger.info(f"✅ Görüntü analizi tamamlandı: {len(debris_list)} enkaz")
+        return response
+
+    except RuntimeError as e:
+        logger.error(f"Runtime hatası: {e}")
+        return {"durum": "hata", "mesaj": str(e)}
+    except Exception as e:
+        logger.error(f"Beklenmeyen hata: {e}", exc_info=True)
+        return {"durum": "hata", "mesaj": "Beklenmeyen bir hata oluştu. Loglara bakın."}
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
+@app.post("/api/drone-analiz")
+async def drone_analiz(
+    resim: UploadFile = File(...),
+    start_x: int = Form(...),
+    start_y: int = Form(...),
+    end_x: int = Form(...),
+    end_y: int = Form(...)
+):
+    """
+    Drone/Helikopter Modu:
+    Görüntüyü alır, AI motoruna gönderir (AstroGuard),
+    ve lokal piksel bazlı A* rotası çizerek döndürür.
+    """
+    logger.info("=" * 50)
+    logger.info(f"🚁 DRONE GÖRÜNTÜ ANALİZ İSTEĞİ (A: {start_x},{start_y} -> B: {end_x},{end_y})")
+    
+    # 1. Dosyayı geçici diske kaydet
+    ext = os.path.splitext(resim.filename)[1] or ".jpg"
+    fd, tmp_path = tempfile.mkstemp(suffix=ext)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            content = await resim.read()
+            f.write(content)
+
+        logger.info(f"📸 Drone görüntüsü kaydedildi: {tmp_path}")
+        
+        # 2. Analiz motorunu çağır
+        sonuc = analyze_drone_image(tmp_path, (start_x, start_y), (end_x, end_y))
+        
+        # 3. Sonuçları dön
+        response = {
+            "durum": "basarili",
+            "tespit_sayisi": len(sonuc["engeller"]),
+            "engeller": sonuc["engeller"],
+            "rota": sonuc["rota"]
+        }
+        
+        logger.info(f"✅ Drone analizi tamamlandı: {len(sonuc['engeller'])} engel, rota noktaları: {len(sonuc['rota'])}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Drone analiz hatası: {e}", exc_info=True)
+        return {"durum": "hata", "mesaj": str(e)}
+        
+    finally:
         try:
             os.unlink(tmp_path)
         except OSError:

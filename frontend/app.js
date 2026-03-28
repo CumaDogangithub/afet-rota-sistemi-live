@@ -1,7 +1,7 @@
 /**
  * Afet Rota Sistemi — Frontend Controller
  * ========================================
- * Harita etkileşimi, AI analiz isteği ve sonuç görselleştirme.
+ * Harita etkileşimi, koordinat girişi, görüntü analiz ve sonuç görselleştirme.
  */
 
 // === CONFIG ===
@@ -36,6 +36,32 @@ const stepDone = document.getElementById('stepDone');
 const statEnkaz = document.getElementById('statEnkaz');
 const statRota = document.getElementById('statRota');
 
+// Coordinate input elements
+const coordALat = document.getElementById('coordALat');
+const coordALon = document.getElementById('coordALon');
+const coordBLat = document.getElementById('coordBLat');
+const coordBLon = document.getElementById('coordBLon');
+const applyABtn = document.getElementById('applyABtn');
+const applyBBtn = document.getElementById('applyBBtn');
+
+// === PANEL TOGGLE ELEMENTS ===
+const controlPanel = document.querySelector('.control-panel');
+const hidePanelBtn = document.getElementById('hidePanelBtn');
+const showPanelBtn = document.getElementById('showPanelBtn');
+
+// === DRONE MODE ELEMENTS ===
+const droneFileInput = document.getElementById('droneFileInput');
+const droneModeOverlay = document.getElementById('droneModeOverlay');
+const droneCanvas = document.getElementById('droneCanvas');
+const droneCtx = droneCanvas.getContext('2d');
+const droneAnalyzeBtn = document.getElementById('droneAnalyzeBtn');
+const droneCloseBtn = document.getElementById('droneCloseBtn');
+const droneInstruction = document.getElementById('droneInstruction');
+
+let droneImageObj = null;
+let dronePoints = { A: null, B: null }; 
+let isDroneAnalyzing = false;
+
 // === MAP INIT ===
 function initMap() {
     map = L.map('map', {
@@ -58,19 +84,95 @@ function onMapClick(e) {
     if (isAnalyzing) return;
 
     if (!markers.A) {
-        markers.A = L.marker(e.latlng, {
-            draggable: true,
-            icon: createMarkerIcon('A', '#3b82f6')
-        }).addTo(map);
-        markers.A.bindPopup('<b>📍 Başlangıç (A)</b>').openPopup();
+        setMarker('A', e.latlng.lat, e.latlng.lng);
         setStatus('A noktası seçildi. Şimdi hedef (B) noktasını seç.', 'info');
     } else if (!markers.B) {
-        markers.B = L.marker(e.latlng, {
-            draggable: true,
-            icon: createMarkerIcon('B', '#ef4444')
-        }).addTo(map);
-        markers.B.bindPopup('<b>🎯 Hedef (B)</b>').openPopup();
+        setMarker('B', e.latlng.lat, e.latlng.lng);
         setStatus('A ve B hazır! "Analiz Başlat" ile yapay zekayı ateşle.', 'info');
+    }
+}
+
+/**
+ * Marker oluşturur veya günceller ve input alanlarını senkronize eder.
+ */
+function setMarker(point, lat, lng) {
+    const color = point === 'A' ? '#3b82f6' : '#ef4444';
+    const label = point === 'A' ? '📍 Başlangıç (A)' : '🎯 Hedef (B)';
+
+    // Mevcut marker'ı kaldır
+    if (markers[point]) {
+        map.removeLayer(markers[point]);
+    }
+
+    // Yeni marker oluştur
+    markers[point] = L.marker([lat, lng], {
+        draggable: true,
+        icon: createMarkerIcon(point, color)
+    }).addTo(map);
+
+    markers[point].bindPopup(`<b>${label}</b>`).openPopup();
+
+    // Drag event — marker sürüklenince input'ları güncelle
+    markers[point].on('dragend', function (e) {
+        const pos = e.target.getLatLng();
+        updateCoordInputs(point, pos.lat, pos.lng);
+    });
+
+    // Input alanlarını güncelle
+    updateCoordInputs(point, lat, lng);
+
+    // Haritayı bu noktaya pan et
+    map.panTo([lat, lng]);
+}
+
+/**
+ * Koordinat input alanlarını günceller.
+ */
+function updateCoordInputs(point, lat, lng) {
+    if (point === 'A') {
+        coordALat.value = lat.toFixed(6);
+        coordALon.value = lng.toFixed(6);
+    } else {
+        coordBLat.value = lat.toFixed(6);
+        coordBLon.value = lng.toFixed(6);
+    }
+}
+
+/**
+ * Input alanlarından koordinat okuyup marker uygular.
+ */
+function applyCoordinate(point) {
+    const latInput = point === 'A' ? coordALat : coordBLat;
+    const lonInput = point === 'A' ? coordALon : coordBLon;
+
+    const lat = parseFloat(latInput.value);
+    const lon = parseFloat(lonInput.value);
+
+    if (isNaN(lat) || isNaN(lon)) {
+        setStatus(`❌ Geçersiz koordinat! Enlem ve boylam sayısal değer olmalıdır.`, 'error');
+        return;
+    }
+
+    if (lat < -90 || lat > 90) {
+        setStatus(`❌ Enlem -90 ile 90 arasında olmalıdır.`, 'error');
+        return;
+    }
+
+    if (lon < -180 || lon > 180) {
+        setStatus(`❌ Boylam -180 ile 180 arasında olmalıdır.`, 'error');
+        return;
+    }
+
+    setMarker(point, lat, lon);
+
+    const pointLabel = point === 'A' ? 'Başlangıç (A)' : 'Hedef (B)';
+    setStatus(`✅ ${pointLabel} noktası ayarlandı: ${lat.toFixed(6)}, ${lon.toFixed(6)}`, 'info');
+
+    // Her iki nokta da seçildiyse bilgilendir
+    if (markers.A && markers.B) {
+        setTimeout(() => {
+            setStatus('A ve B hazır! "Analiz Başlat" ile yapay zekayı ateşle.', 'info');
+        }, 1500);
     }
 }
 
@@ -180,6 +282,8 @@ async function otonomAnalizEt() {
     }
 }
 
+
+
 // === SONUÇ ÇİZİMİ ===
 function drawResults(res) {
     // Tehlike bölgelerini çiz
@@ -199,12 +303,19 @@ function drawResults(res) {
             }).addTo(map);
             dangerZoneLayers.push(dangerZone);
 
-            // Enkaz noktası — küçük dolu daire
+            // Enkaz noktası — küçük dolu daire (riske göre renk)
             const confidencePercent = Math.round((enkaz.confidence || 0) * 100);
+            const riskScore = enkaz.risk_score || 0.2;
+            const riskPercent = Math.round(riskScore * 100);
+            const riskEmoji = riskScore >= 0.9 ? '🔴' : riskScore >= 0.5 ? '🟠' : '🟢';
+            const riskLabel = riskScore >= 0.9 ? 'KRİTİK' : riskScore >= 0.5 ? 'ORTA' : 'DÜŞÜK';
+            const markerColor = riskScore >= 0.9 ? '#dc2626' : riskScore >= 0.5 ? '#f97316' : '#22c55e';
+            const markerFill = riskScore >= 0.9 ? '#f87171' : riskScore >= 0.5 ? '#fdba74' : '#86efac';
+
             const marker = L.circleMarker(coord, {
                 radius: 7,
-                color: '#dc2626',
-                fillColor: '#f87171',
+                color: markerColor,
+                fillColor: markerFill,
                 fillOpacity: 0.9,
                 weight: 2
             }).addTo(map);
@@ -213,19 +324,20 @@ function drawResults(res) {
                     <b>🚨 Enkaz Tespiti</b><br>
                     Sınıf: ${enkaz.sinif || 'debris'}<br>
                     Güven: %${confidencePercent}<br>
-                    Tehlike Yarıçapı: ${radius}m
+                    Tehlike Yarıçapı: ${radius}m<br>
+                    ${riskEmoji} Risk: %${riskPercent} (${riskLabel})
                 </div>`
             );
             enkazLayers.push(marker);
         });
     }
 
-    // Alternatif rota (ince, sarı, arka planda)
+    // Alternatif rota (daha belirgin, mavi)
     if (res.alternatif_rota && res.alternatif_rota.length > 1) {
         altRouteLayer = L.polyline(res.alternatif_rota, {
-            color: '#fbbf24',
-            weight: 5,
-            opacity: 0.4,
+            color: '#3b82f6',
+            weight: 7,
+            opacity: 0.6,
             dashArray: '8,8',
             lineCap: 'round'
         }).addTo(map);
@@ -234,14 +346,14 @@ function drawResults(res) {
     // Ana güvenli rota (kalın, turuncu→yeşil gradient etkisi)
     if (res.guvenli_rota && res.guvenli_rota.length > 1) {
         // Glow efekti
-        L.polyline(res.guvenli_rota, {
+        const glow = L.polyline(res.guvenli_rota, {
             color: '#f97316',
             weight: 16,
             opacity: 0.2,
             lineCap: 'round',
             lineJoin: 'round'
         }).addTo(map);
-        enkazLayers.push(enkazLayers[enkazLayers.length - 1]); // track for cleanup
+        enkazLayers.push(glow);
 
         // Ana çizgi
         routeLayer = L.polyline(res.guvenli_rota, {
@@ -313,12 +425,257 @@ function resetAll() {
     clearResults();
     if (markers.A) { map.removeLayer(markers.A); markers.A = null; }
     if (markers.B) { map.removeLayer(markers.B); markers.B = null; }
-    setStatus('Sistem hazır. Haritada A ve B noktalarını seç.', 'info');
+
+    // Koordinat inputlarını temizle
+    coordALat.value = '';
+    coordALon.value = '';
+    coordBLat.value = '';
+    coordBLon.value = '';
+
+    // Drone modunu sıfırla
+    if (droneCtx && droneCanvas) {
+        droneCtx.clearRect(0, 0, droneCanvas.width, droneCanvas.height);
+    }
+    dronePoints = { A: null, B: null };
+    droneImageObj = null;
+    droneFileInput.value = '';
+    droneAnalyzeBtn.disabled = true;
+    droneInstruction.textContent = "1. Başlangıç noktasını (A) seçmek için görsele tıklayın.";
+
+    setStatus('Sistem hazır. Haritada A ve B noktalarını seç veya koordinat gir.', 'info');
+}
+
+// === DRONE MODU LOGIC ===
+
+function openDroneMode(file) {
+    if (!file) return;
+    
+    // Görüntüyü oku ve Canvas'a at
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            droneImageObj = img;
+            
+            // Canvas boyutunu resme uydur
+            droneCanvas.width = img.width;
+            droneCanvas.height = img.height;
+            
+            // Resmi çiz
+            droneCtx.drawImage(img, 0, 0);
+            
+            // UI ayarla
+            droneModeOverlay.style.display = 'flex';
+            dronePoints = { A: null, B: null };
+            droneInstruction.textContent = "1. Başlangıç noktasını (A) seçmek için görsele tıklayın.";
+            droneAnalyzeBtn.disabled = true;
+        }
+        img.src = e.target.result;
+    }
+    reader.readAsDataURL(file);
+}
+
+function closeDroneMode() {
+    droneModeOverlay.style.display = 'none';
+    droneFileInput.value = ''; // Yeni seçime izin ver
+}
+
+function redrawDroneCanvas() {
+    if (!droneImageObj) return;
+    
+    // Temizle ve resmi yeniden çiz
+    droneCtx.clearRect(0, 0, droneCanvas.width, droneCanvas.height);
+    droneCtx.drawImage(droneImageObj, 0, 0);
+    
+    // A noktasını çiz
+    if (dronePoints.A) drawDroneMarker(dronePoints.A.x, dronePoints.A.y, 'A', '#3b82f6');
+    // B noktasını çiz
+    if (dronePoints.B) drawDroneMarker(dronePoints.B.x, dronePoints.B.y, 'B', '#ef4444');
+}
+
+function drawDroneMarker(x, y, label, color) {
+    // Dış Halka
+    droneCtx.beginPath();
+    droneCtx.arc(x, y, 15, 0, 2 * Math.PI);
+    droneCtx.fillStyle = color;
+    droneCtx.fill();
+    droneCtx.lineWidth = 3;
+    droneCtx.strokeStyle = '#ffffff';
+    droneCtx.stroke();
+    
+    // İç Metin
+    droneCtx.fillStyle = '#ffffff';
+    droneCtx.font = 'bold 16px Arial';
+    droneCtx.textAlign = 'center';
+    droneCtx.textBaseline = 'middle';
+    droneCtx.fillText(label, x, y + 1);
+}
+
+droneCanvas.addEventListener('click', (e) => {
+    if (isDroneAnalyzing) return;
+    
+    // Tıklanan piksel koordinatını hesapla (CSS scale vs hesaba katarak)
+    const rect = droneCanvas.getBoundingClientRect();
+    const scaleX = droneCanvas.width / rect.width;
+    const scaleY = droneCanvas.height / rect.height;
+    
+    const x = Math.round((e.clientX - rect.left) * scaleX);
+    const y = Math.round((e.clientY - rect.top) * scaleY);
+    
+    if (!dronePoints.A) {
+        dronePoints.A = { x, y };
+        droneInstruction.textContent = "2. Hedef noktasını (B) seçin.";
+    } else if (!dronePoints.B) {
+        dronePoints.B = { x, y };
+        droneInstruction.textContent = "3. Noktalar seçildi. Analizi başlatabilirsiniz.";
+        droneAnalyzeBtn.disabled = false;
+    } else {
+        // İkisi de varsa, sıfırlayıp baştan A ata
+        dronePoints.A = { x, y };
+        dronePoints.B = null;
+        droneInstruction.textContent = "2. Hedef noktasını (B) seçin.";
+        droneAnalyzeBtn.disabled = true;
+    }
+    
+    redrawDroneCanvas();
+});
+
+async function runDroneAnalysis() {
+    if (!droneImageObj || !dronePoints.A || !dronePoints.B) return;
+    
+    isDroneAnalyzing = true;
+    droneAnalyzeBtn.disabled = true;
+    droneCloseBtn.disabled = true;
+    droneInstruction.textContent = "⏳ Analiz ediliyor... (A* Algoritması ve Engel Tespiti)";
+    
+    try {
+        // Blob olarak gönder
+        droneCanvas.toBlob(async (blob) => {
+            const formData = new FormData();
+            formData.append('resim', blob, 'drone_image.jpg');
+            formData.append('start_x', dronePoints.A.x);
+            formData.append('start_y', dronePoints.A.y);
+            formData.append('end_x', dronePoints.B.x);
+            formData.append('end_y', dronePoints.B.y);
+            
+            const response = await fetch(`${API_URL}/api/drone-analiz`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+            
+            const res = await response.json();
+            
+            if (res.durum === 'basarili') {
+                droneInstruction.textContent = `✅ Tamamlandı: ${res.engeller.length} engel bulundu. Rota çizildi.`;
+                drawDroneResults(res.engeller, res.rota);
+            } else {
+                droneInstruction.textContent = `❌ Hata: ${res.mesaj}`;
+            }
+        }, 'image/jpeg', 0.9);
+        
+    } catch (e) {
+        console.error("Drone analiz hatası:", e);
+        droneInstruction.textContent = `❌ Başarısız: Sunucu bağlantı hatası.`;
+    } finally {
+        isDroneAnalyzing = false;
+        droneCloseBtn.disabled = false;
+    }
+}
+
+function drawDroneResults(engeller, rota) {
+    redrawDroneCanvas(); // Resmi ve markerları temizce çiz
+    
+    // Engelleri kutu olarak çiz
+    engeller.forEach(enc => {
+        const x = enc.x - (enc.w / 2);
+        const y = enc.y - (enc.h / 2);
+        
+        // Risk rengine göre sınır
+        droneCtx.lineWidth = 3;
+        droneCtx.strokeStyle = enc.risk_score >= 0.9 ? '#ef4444' : 
+                              enc.risk_score >= 0.5 ? '#f97316' : '#22c55e';
+                              
+        droneCtx.fillStyle = enc.risk_score >= 0.9 ? 'rgba(239, 68, 68, 0.2)' : 
+                            enc.risk_score >= 0.5 ? 'rgba(249, 115, 22, 0.2)' : 'rgba(34, 197, 94, 0.2)';
+                            
+        droneCtx.beginPath();
+        droneCtx.rect(x, y, enc.w, enc.h);
+        droneCtx.fill();
+        droneCtx.stroke();
+    });
+    
+    // Rotayı çiz
+    if (rota && rota.length > 0) {
+        droneCtx.beginPath();
+        droneCtx.moveTo(rota[0][0], rota[0][1]);
+        for (let i = 1; i < rota.length; i++) {
+            droneCtx.lineTo(rota[i][0], rota[i][1]);
+        }
+        droneCtx.strokeStyle = '#f97316'; // Turuncu rota
+        droneCtx.lineWidth = 6;
+        droneCtx.lineCap = 'round';
+        droneCtx.lineJoin = 'round';
+        droneCtx.stroke();
+        
+        // Rotanın üstüne daha ince sarı çizgi (Glow effect)
+        droneCtx.strokeStyle = '#fef08a';
+        droneCtx.lineWidth = 2;
+        droneCtx.stroke();
+    }
+    
+    // A ve B'yi en üste tekrar çiz
+    if (dronePoints.A) drawDroneMarker(dronePoints.A.x, dronePoints.A.y, 'A', '#3b82f6');
+    if (dronePoints.B) drawDroneMarker(dronePoints.B.x, dronePoints.B.y, 'B', '#ef4444');
 }
 
 // === BOOT ===
 document.addEventListener('DOMContentLoaded', () => {
     initMap();
+
+    // Ana analiz ve sıfırlama butonları
     analizBtn.addEventListener('click', otonomAnalizEt);
     resetBtn.addEventListener('click', resetAll);
+    
+    // Drone Modu Eventleri
+    const droneUploadLabel = document.getElementById('droneUploadLabel');
+    if (droneUploadLabel) {
+        droneUploadLabel.addEventListener('click', (e) => {
+            e.preventDefault();
+            droneFileInput.click();
+        });
+    }
+
+    droneFileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            openDroneMode(e.target.files[0]);
+        }
+    });
+    
+    droneCloseBtn.addEventListener('click', closeDroneMode);
+    droneAnalyzeBtn.addEventListener('click', runDroneAnalysis);
+
+    // Koordinat uygulama butonları
+    applyABtn.addEventListener('click', () => applyCoordinate('A'));
+    applyBBtn.addEventListener('click', () => applyCoordinate('B'));
+    
+    // Panel Küçült / Büyüt
+    hidePanelBtn.addEventListener('click', () => {
+        controlPanel.classList.add('hidden');
+        showPanelBtn.style.display = 'block';
+    });
+    
+    showPanelBtn.addEventListener('click', () => {
+        controlPanel.classList.remove('hidden');
+        showPanelBtn.style.display = 'none';
+    });
+
+    // Enter tuşu ile koordinat uygulama
+    coordALat.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCoordinate('A'); });
+    coordALon.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCoordinate('A'); });
+    coordBLat.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCoordinate('B'); });
+    coordBLon.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCoordinate('B'); });
+
+
 });
