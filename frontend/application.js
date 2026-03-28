@@ -340,9 +340,6 @@ function startDebrisReportMode() {
     debrisReportMode = true;
     debrisReportLatLng = null;
 
-    // Modal ac
-    openModal(debrisReportModal);
-
     // Formu sifirla
     document.getElementById('debrisReportInstruction').textContent = 'Haritada enkaz noktasini secmek icin tiklayin.';
     document.getElementById('debrisReportCoords').style.display = 'none';
@@ -368,6 +365,9 @@ function onDebrisPointSelected(lat, lng) {
     document.getElementById('debrisReportCoords').style.display = 'block';
     document.getElementById('debrisReportLatLng').textContent = `Enlem: ${lat.toFixed(6)}, Boylam: ${lng.toFixed(6)}`;
     document.getElementById('debrisReportForm').style.display = 'flex';
+
+    // Hariteya tiklandiktan sonra modal acilir
+    openModal(debrisReportModal);
 
     // Haritada gecici marker goster
     const tempMarker = L.circleMarker([lat, lng], {
