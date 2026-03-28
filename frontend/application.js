@@ -17,6 +17,7 @@ let routeLayer = null;
 let altRouteLayer = null;
 let enkazLayers = [];
 let dangerZoneLayers = [];
+let routeLabelLayers = [];
 let isAnalyzing = false;
 let debrisReportMode = false;
 let debrisReportLatLng = null;
@@ -672,6 +673,74 @@ function createMarkerIcon(label, color) {
     });
 }
 
+// ============================================
+// MESAFE HESABI (Haversine)
+// ============================================
+function haversineDistance(coords) {
+    if (!coords || coords.length < 2) return 0;
+    let total = 0;
+    const R = 6371000;
+    for (let i = 0; i < coords.length - 1; i++) {
+        const [lat1, lon1] = coords[i];
+        const [lat2, lon2] = coords[i + 1];
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        total += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    return total;
+}
+
+function formatDist(meters) {
+    return meters >= 1000 ? `${(meters / 1000).toFixed(2)} km` : `${Math.round(meters)} m`;
+}
+
+function formatTime(meters) {
+    // Araç hızı: 20 km/s (afet bölgesi yavaş seyir)
+    const min = Math.round(meters / 20000 * 60);
+    return min < 1 ? '<1 dk' : `~${min} dk`;
+}
+
+// ============================================
+// ROTA ETİKETİ
+// ============================================
+function drawRouteLabel(routeCoords, type) {
+    const totalMeters = haversineDistance(routeCoords);
+    const distText = formatDist(totalMeters);
+    const timeText = formatTime(totalMeters);
+    const isAlt = type === 'alt';
+
+    // Rotanın %40 noktasını al (alt ve main çakışmasın)
+    const idx = isAlt
+        ? Math.floor(routeCoords.length * 0.35)
+        : Math.floor(routeCoords.length * 0.60);
+    const point = routeCoords[Math.max(0, Math.min(idx, routeCoords.length - 1))];
+
+    const html = isAlt
+        ? `<div class="route-label-bubble route-label-bubble-alt">
+               <span class="route-label-tag">ALT</span>
+               <span class="route-label-dist route-label-dist-alt">${distText}</span>
+               <span class="route-label-sep">·</span>
+               <span class="route-label-time">${timeText}</span>
+           </div>`
+        : `<div class="route-label-bubble">
+               <span class="route-label-dist">${distText}</span>
+               <span class="route-label-sep">·</span>
+               <span class="route-label-time">${timeText}</span>
+           </div>`;
+
+    // iconAnchor: etiket genişliği ~120px, yükseklik ~28px — ortala
+    const icon = L.divIcon({
+        className: '',
+        html: html,
+        iconSize: [140, 30],
+        iconAnchor: [70, 15]
+    });
+
+    const lm = L.marker(point, { icon, interactive: false, zIndexOffset: 500 }).addTo(map);
+    routeLabelLayers.push(lm);
+}
+
 // === ANALIZ ===
 async function otonomAnalizEt() {
     if (!markers.A || !markers.B) {
@@ -807,6 +876,8 @@ function drawResults(res) {
             dashArray: '8,8',
             lineCap: 'round'
         }).addTo(map);
+        
+        drawRouteLabel(res.alternatif_rota, 'alt');
     }
 
     if (res.guvenli_rota && res.guvenli_rota.length > 1) {
@@ -826,6 +897,8 @@ function drawResults(res) {
             lineCap: 'round',
             lineJoin: 'round'
         }).addTo(map);
+        
+        drawRouteLabel(res.guvenli_rota, 'main');
     }
 
     legendPanel.classList.add('visible');
@@ -874,7 +947,15 @@ function setStep(step) {
 
 function showStats(res) {
     statEnkaz.textContent = res.tespit_sayisi || 0;
-    statRota.textContent = res.guvenli_rota ? res.guvenli_rota.length : 0;
+    
+    // Rota mesafesi ve süresi
+    if (res.guvenli_rota && res.guvenli_rota.length > 1) {
+        const dist = haversineDistance(res.guvenli_rota);
+        statRota.textContent = `${formatDist(dist)} · ${formatTime(dist)}`;
+    } else {
+        statRota.textContent = '—';
+    }
+    
     statsGrid.classList.add('visible');
 }
 
@@ -883,8 +964,10 @@ function clearResults() {
     if (altRouteLayer) { map.removeLayer(altRouteLayer); altRouteLayer = null; }
     enkazLayers.forEach(l => { try { map.removeLayer(l); } catch(e) {} });
     dangerZoneLayers.forEach(l => { try { map.removeLayer(l); } catch(e) {} });
+    routeLabelLayers.forEach(l => { try { map.removeLayer(l); } catch(e) {} });
     enkazLayers = [];
     dangerZoneLayers = [];
+    routeLabelLayers = [];
     statsGrid.classList.remove('visible');
     legendPanel.classList.remove('visible');
     showProgress(false);
