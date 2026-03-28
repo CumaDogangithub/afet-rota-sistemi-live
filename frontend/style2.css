@@ -679,6 +679,43 @@ body, html {
     gap: 15px;
 }
 
+.drone-gps-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.drone-gps-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.drone-gps-field label {
+    font-size: 10px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.drone-gps-input {
+    width: 90px;
+    padding: 4px 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px;
+    color: #e2e8f0;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+}
+
+.drone-gps-input:focus {
+    outline: none;
+    border-color: rgba(59, 130, 246, 0.5);
+    background: rgba(255,255,255,0.1);
+}
+
 .drone-canvas-container {
     flex: 1;
     overflow: auto;

@@ -462,19 +462,31 @@ function openDroneMode(file) {
         img.onload = function() {
             droneImageObj = img;
             
-            // Canvas boyutunu resme uydur
+            // İç çözünürlük: Resmin gerçek piksel boyutları
             droneCanvas.width = img.width;
             droneCanvas.height = img.height;
             
-            // CSS boyutunu konteynere uydur (responsive)
-            droneCanvas.style.width = 'auto';
-            droneCanvas.style.height = 'auto';
+            // TAM EKRAN: Canvas'ı konteynerin tamamına yay
+            // İç çözünürlük korunur, CSS ile scale edilir
+            const container = document.getElementById('droneCanvasContainer');
+            const containerH = container.clientHeight - 30; // padding çıkar
+            const containerW = container.clientWidth - 30;
+            
+            const imgAspect = img.width / img.height;
+            const containerAspect = containerW / containerH;
+            
+            if (imgAspect > containerAspect) {
+                // Yatay fotoğraf — genişliğe sığdır
+                droneCanvas.style.width = '100%';
+                droneCanvas.style.height = 'auto';
+            } else {
+                // Dikey fotoğraf — yüksekliğe sığdır
+                droneCanvas.style.height = '100%';
+                droneCanvas.style.width = 'auto';
+            }
             
             // Context al (Her seferinde taze)
             droneCtx = droneCanvas.getContext('2d', { alpha: false });
-            
-            // Keskinlik için imageSmoothingEnabled kapatılabilir veya açılabilir
-            // Drone fotoğraflarında true genelde daha iyidir
             droneCtx.imageSmoothingEnabled = true;
             droneCtx.imageSmoothingQuality = 'high';
             
@@ -483,7 +495,7 @@ function openDroneMode(file) {
             
             // UI ayarla
             document.getElementById('droneWorkspaceEmpty').style.display = 'none';
-            document.getElementById('droneCanvasContainer').style.display = 'flex';
+            container.style.display = 'flex';
             dronePoints = { A: null, B: null };
             droneInstruction.textContent = "1. Başlangıç noktasını (A) seçmek için görsele tıklayın.";
             droneAnalyzeBtn.disabled = true;
@@ -498,6 +510,20 @@ function closeDroneMode() {
     document.getElementById('droneWorkspaceEmpty').style.display = 'flex';
     document.getElementById('droneCanvasContainer').style.display = 'none';
     droneFileInput.value = ''; // Yeni seçime izin ver
+}
+
+// Piksel koordinatını GPS'e çevir (Frontend tarafı)
+function pixelToGps(px, py) {
+    const nwLat = parseFloat(document.getElementById('droneNWLat').value);
+    const nwLon = parseFloat(document.getElementById('droneNWLon').value);
+    const seLat = parseFloat(document.getElementById('droneSELat').value);
+    const seLon = parseFloat(document.getElementById('droneSELon').value);
+    
+    if (isNaN(nwLat) || isNaN(nwLon) || isNaN(seLat) || isNaN(seLon)) return null;
+    
+    const lat = nwLat - (py / droneCanvas.height) * (nwLat - seLat);
+    const lon = nwLon + (px / droneCanvas.width) * (seLon - nwLon);
+    return { lat, lon };
 }
 
 function redrawDroneCanvas() {
@@ -563,85 +589,150 @@ droneCanvas.addEventListener('click', (e) => {
 async function runDroneAnalysis() {
     if (!droneImageObj || !dronePoints.A || !dronePoints.B) return;
     
+    // GPS sınırlarını kontrol et
+    const nwLat = parseFloat(document.getElementById('droneNWLat').value);
+    const nwLon = parseFloat(document.getElementById('droneNWLon').value);
+    const seLat = parseFloat(document.getElementById('droneSELat').value);
+    const seLon = parseFloat(document.getElementById('droneSELon').value);
+    
+    if (isNaN(nwLat) || isNaN(nwLon) || isNaN(seLat) || isNaN(seLon)) {
+        droneInstruction.textContent = "❌ Hata: GPS koordinatlarını doldurun (NW ve SE köşeler).";
+        return;
+    }
+    
+    // A ve B'nin GPS karşılıklarını hesapla
+    const gpsA = pixelToGps(dronePoints.A.x, dronePoints.A.y);
+    const gpsB = pixelToGps(dronePoints.B.x, dronePoints.B.y);
+    
+    if (!gpsA || !gpsB) {
+        droneInstruction.textContent = "❌ Hata: GPS dönüşümü yapılamadı.";
+        return;
+    }
+    
     isDroneAnalyzing = true;
     droneAnalyzeBtn.disabled = true;
     droneCloseBtn.disabled = true;
-    droneInstruction.textContent = "⏳ Analiz ediliyor... (A* Algoritması ve Engel Tespiti)";
+    droneInstruction.textContent = "⏳ SAHI analizi + rota hesaplama... (Gerçek sokak ağı kullanılıyor)";
     
     try {
-        // Yüksek kalite Blob olarak gönder (0.9 -> 0.95)
+        // Orijinal resimden yüksek kalite blob oluştur
         droneCanvas.toBlob(async (blob) => {
-            const formData = new FormData();
-            formData.append('resim', blob, 'drone_image.jpg');
-            formData.append('start_x', dronePoints.A.x);
-            formData.append('start_y', dronePoints.A.y);
-            formData.append('end_x', dronePoints.B.x);
-            formData.append('end_y', dronePoints.B.y);
-            
-            const response = await fetch(`${API_URL}/api/drone-analiz`, {
-                method: 'POST',
-                body: formData
-            });
+            try {
+                const formData = new FormData();
+                formData.append('resim', blob, 'drone_image.jpg');
+                formData.append('nw_lat', nwLat);
+                formData.append('nw_lon', nwLon);
+                formData.append('se_lat', seLat);
+                formData.append('se_lon', seLon);
+                formData.append('start_lat', gpsA.lat);
+                formData.append('start_lon', gpsA.lon);
+                formData.append('end_lat', gpsB.lat);
+                formData.append('end_lon', gpsB.lon);
+                
+                const response = await fetch(`${API_URL}/api/drone-analiz`, {
+                    method: 'POST',
+                    body: formData
+                });
 
-            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-            
-            const res = await response.json();
-            
-            if (res.durum === 'basarili') {
-                droneInstruction.textContent = `✅ Tamamlandı: ${res.engeller.length} engel bulundu. Rota çizildi.`;
-                drawDroneResults(res.engeller, res.rota);
-            } else {
-                droneInstruction.textContent = `❌ Hata: ${res.mesaj}`;
+                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                
+                const res = await response.json();
+                
+                if (res.durum === 'basarili') {
+                    droneInstruction.textContent = `✅ ${res.tespit_sayisi} enkaz bulundu. Gerçek lokak rotası çizildi!`;
+                    drawDroneResults(res.engeller, res.rota, res.rota_alt);
+                } else {
+                    droneInstruction.textContent = `❌ Hata: ${res.mesaj}`;
+                }
+            } catch (innerErr) {
+                console.error("Drone analiz hatası (iç):", innerErr);
+                droneInstruction.textContent = `❌ Başarısız: ${innerErr.message}`;
+            } finally {
+                isDroneAnalyzing = false;
+                droneCloseBtn.disabled = false;
             }
         }, 'image/jpeg', 0.95);
         
     } catch (e) {
         console.error("Drone analiz hatası:", e);
         droneInstruction.textContent = `❌ Başarısız: Sunucu bağlantı hatası.`;
-    } finally {
         isDroneAnalyzing = false;
         droneCloseBtn.disabled = false;
     }
 }
 
-function drawDroneResults(engeller, rota) {
+function drawDroneResults(engeller, rota, rotaAlt) {
     redrawDroneCanvas(); // Resmi ve markerları temizce çiz
     
     // Engelleri kutu olarak çiz
     engeller.forEach(enc => {
-        const x = enc.x - (enc.w / 2);
-        const y = enc.y - (enc.h / 2);
+        const halfW = enc.w / 2;
+        const halfH = enc.h / 2;
+        const x = enc.x - halfW;
+        const y = enc.y - halfH;
         
-        // Risk rengine göre sınır
+        // Risk rengine göre dolgu ve çerçeve
         droneCtx.lineWidth = 3;
         droneCtx.strokeStyle = enc.risk_score >= 0.9 ? '#ef4444' : 
                               enc.risk_score >= 0.5 ? '#f97316' : '#22c55e';
                               
-        droneCtx.fillStyle = enc.risk_score >= 0.9 ? 'rgba(239, 68, 68, 0.2)' : 
-                            enc.risk_score >= 0.5 ? 'rgba(249, 115, 22, 0.2)' : 'rgba(34, 197, 94, 0.2)';
+        droneCtx.fillStyle = enc.risk_score >= 0.9 ? 'rgba(239, 68, 68, 0.25)' : 
+                            enc.risk_score >= 0.5 ? 'rgba(249, 115, 22, 0.25)' : 'rgba(34, 197, 94, 0.25)';
                             
         droneCtx.beginPath();
         droneCtx.rect(x, y, enc.w, enc.h);
         droneCtx.fill();
         droneCtx.stroke();
+        
+        // Enkaz etiketi
+        droneCtx.fillStyle = '#fff';
+        droneCtx.font = 'bold 12px Arial';
+        droneCtx.fillText(`${enc.sinif} %${Math.round(enc.confidence * 100)}`, x + 4, y - 4);
     });
     
-    // Rotayı çiz
-    if (rota && rota.length > 0) {
+    // Alternatif rotayı çiz (mavi, kesikli)
+    if (rotaAlt && rotaAlt.length > 1) {
+        droneCtx.beginPath();
+        droneCtx.moveTo(rotaAlt[0][0], rotaAlt[0][1]);
+        for (let i = 1; i < rotaAlt.length; i++) {
+            droneCtx.lineTo(rotaAlt[i][0], rotaAlt[i][1]);
+        }
+        droneCtx.strokeStyle = '#3b82f6';
+        droneCtx.lineWidth = 5;
+        droneCtx.setLineDash([12, 8]);
+        droneCtx.lineCap = 'round';
+        droneCtx.lineJoin = 'round';
+        droneCtx.stroke();
+        droneCtx.setLineDash([]);
+    }
+    
+    // Ana rotayı çiz (turuncu, düz)
+    if (rota && rota.length > 1) {
+        // Glow efekti
         droneCtx.beginPath();
         droneCtx.moveTo(rota[0][0], rota[0][1]);
         for (let i = 1; i < rota.length; i++) {
             droneCtx.lineTo(rota[i][0], rota[i][1]);
         }
-        droneCtx.strokeStyle = '#f97316'; // Turuncu rota
-        droneCtx.lineWidth = 6;
+        droneCtx.strokeStyle = 'rgba(249, 115, 22, 0.3)';
+        droneCtx.lineWidth = 14;
         droneCtx.lineCap = 'round';
         droneCtx.lineJoin = 'round';
         droneCtx.stroke();
         
-        // Rotanın üstüne daha ince sarı çizgi (Glow effect)
+        // Ana çizgi
+        droneCtx.beginPath();
+        droneCtx.moveTo(rota[0][0], rota[0][1]);
+        for (let i = 1; i < rota.length; i++) {
+            droneCtx.lineTo(rota[i][0], rota[i][1]);
+        }
+        droneCtx.strokeStyle = '#f97316';
+        droneCtx.lineWidth = 5;
+        droneCtx.stroke();
+        
+        // İnce sarı merkez çizgisi
         droneCtx.strokeStyle = '#fef08a';
-        droneCtx.lineWidth = 2;
+        droneCtx.lineWidth = 1.5;
         droneCtx.stroke();
     }
     
@@ -666,7 +757,18 @@ document.addEventListener('DOMContentLoaded', () => {
             droneModeOverlay.style.display = 'flex';
             document.getElementById('droneWorkspaceEmpty').style.display = 'flex';
             document.getElementById('droneCanvasContainer').style.display = 'none';
-            droneFileInput.value = ''; 
+            droneFileInput.value = '';
+            
+            // GPS alanlarını ana haritanın mevcut viewport'u ile doldur
+            if (map) {
+                const bounds = map.getBounds();
+                const nw = bounds.getNorthWest();
+                const se = bounds.getSouthEast();
+                document.getElementById('droneNWLat').value = nw.lat.toFixed(5);
+                document.getElementById('droneNWLon').value = nw.lng.toFixed(5);
+                document.getElementById('droneSELat').value = se.lat.toFixed(5);
+                document.getElementById('droneSELon').value = se.lng.toFixed(5);
+            }
         });
     }
 

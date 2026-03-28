@@ -153,6 +153,24 @@
             <h2>🚁 Drone/Helikopter Modu</h2>
             <span id="droneInstruction" class="drone-instruction">1. Başlangıç noktasını (A) seçmek için görsele tıklayın.</span>
         </div>
+        <div class="drone-gps-row">
+            <div class="drone-gps-field">
+                <label>NW Lat</label>
+                <input type="number" id="droneNWLat" class="drone-gps-input" step="0.00001" placeholder="36.205">
+            </div>
+            <div class="drone-gps-field">
+                <label>NW Lon</label>
+                <input type="number" id="droneNWLon" class="drone-gps-input" step="0.00001" placeholder="36.158">
+            </div>
+            <div class="drone-gps-field">
+                <label>SE Lat</label>
+                <input type="number" id="droneSELat" class="drone-gps-input" step="0.00001" placeholder="36.200">
+            </div>
+            <div class="drone-gps-field">
+                <label>SE Lon</label>
+                <input type="number" id="droneSELon" class="drone-gps-input" step="0.00001" placeholder="36.165">
+            </div>
+        </div>
         <div class="drone-toolbar-right">
             <button id="droneAnalyzeBtn" class="btn btn-primary" disabled>🧠 Analiz Başlat</button>
             <button id="droneCloseBtn" class="btn btn-secondary">❌ Kapat</button>
