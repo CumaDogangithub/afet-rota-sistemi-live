@@ -1661,4 +1661,80 @@ document.addEventListener('DOMContentLoaded', () => {
     coordALon.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCoordinate('A'); });
     coordBLat.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCoordinate('B'); });
     coordBLon.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyCoordinate('B'); });
+
+    // Sayfa acildiginda da bekleyen offline veri varsa senkronize et
+    syncOfflineDebrisReports();
+
+    // Tarayici internete baglandiginda otomatik tetikle
+    window.addEventListener('online', () => {
+        console.log('🌐 İnternet bağlantısı algılandı! Offline veriler senkronize ediliyor...');
+        syncOfflineDebrisReports();
+    });
 });
+
+// ============================================
+// OFFLINE → ONLINE OTOMATİK SENKRONİZASYON
+// ============================================
+async function syncOfflineDebrisReports() {
+    // Firebase config yoksa senkronizasyon yapilamaz
+    if (typeof firebaseConfig === 'undefined' || !firebaseConfig.projectId) return;
+
+    const saved = JSON.parse(localStorage.getItem('enkaz_bildirimleri') || '[]');
+    const offlineReports = saved.filter(item => item.id && item.id.startsWith('local_'));
+
+    if (offlineReports.length === 0) return; // Bekleyen offline veri yok
+
+    console.log(`📤 ${offlineReports.length} adet offline enkaz bildirimi buluta yükleniyor...`);
+    let syncCount = 0;
+
+    for (const report of offlineReports) {
+        try {
+            const restUrl = `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/enkaz_bildirimleri`;
+
+            const firestoreData = {
+                fields: {
+                    lat: { doubleValue: report.lat },
+                    lng: { doubleValue: report.lng },
+                    tarih: { stringValue: report.tarih || new Date().toISOString() },
+                    durum: { stringValue: report.durum || 'aktif' }
+                }
+            };
+
+            // Opsiyonel alanlari ekle
+            if (report.isim) firestoreData.fields.isim = { stringValue: report.isim };
+            if (report.yikilma_orani) firestoreData.fields.yikilma_orani = { stringValue: report.yikilma_orani };
+            if (report.kisi_sayisi) firestoreData.fields.kisi_sayisi = { integerValue: report.kisi_sayisi.toString() };
+            if (report.saglik_durumu) firestoreData.fields.saglik_durumu = { stringValue: report.saglik_durumu };
+            if (report.iletisim) firestoreData.fields.iletisim = { stringValue: report.iletisim };
+            if (report.aciklama) firestoreData.fields.aciklama = { stringValue: report.aciklama };
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+            const response = await fetch(restUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(firestoreData),
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                // Basarili: localStorage'dan bu kaydi sil
+                const updatedSaved = JSON.parse(localStorage.getItem('enkaz_bildirimleri') || '[]');
+                const filtered = updatedSaved.filter(item => item.id !== report.id);
+                localStorage.setItem('enkaz_bildirimleri', JSON.stringify(filtered));
+                syncCount++;
+            }
+        } catch (err) {
+            // Basarisiz — dokunma, sonraki "online" eventinde tekrar denenir
+            console.warn(`⚠️ Offline rapor senkronize edilemedi (${report.id}):`, err.message);
+        }
+    }
+
+    if (syncCount > 0) {
+        console.log(`✅ ${syncCount} offline bildiri başarıyla buluta yüklendi.`);
+        setStatus(`${syncCount} bekleyen enkaz bildirimi buluta senkronize edildi!`, 'success');
+    }
+}
